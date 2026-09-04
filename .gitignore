@@ -1,0 +1,22 @@
+﻿# Dependencies
+node_modules/
+package-lock.json
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.temp*
+
+# Audio temporary files
+*.mp3
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# User private campaign saves (preserve templates)
+sessions/*
+!sessions/.gitkeep
