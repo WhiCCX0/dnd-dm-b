@@ -171,7 +171,105 @@ const VERNACULAR_MAP = {
 
   // 武器精通别名
   '武器专精': { query: '精通词条', command: 'rule' },
-  '武器精通': { query: '精通词条', command: 'rule' }
+  '武器精通': { query: '精通词条', command: 'rule' },
+
+  // 职业招牌机制别名
+  '神圣打击': { query: '至圣斩', command: 'spell' },
+  '至圣打击': { query: '至圣斩', command: 'spell' },
+  '至圣斩': { query: '至圣斩', command: 'spell' },
+  '魔能爆': { query: '魔能爆', command: 'spell' }
+};
+
+// 12 大核心职业关键招牌特性直达映射库 (2024 官方专有特性速查)
+const CLASS_FEATURES_MAP = {
+  '偷袭': {
+    class: '游荡者',
+    feature: '偷袭',
+    titleEn: 'Sneak Attack',
+    brief: '[职业特性] 游荡者 - 偷袭 (Sneak Attack) | 攻击具有优势，或目标5尺内有未失能盟友且你无劣势时，造成额外 1d6 (随等级提升) 伤害。可消耗偷袭伤害骰发动诡诈打击(摔绊/淬毒/撤离)。',
+    url: '玩家手册2024/角色职业/游荡者/游荡者.htm',
+    edition: '2024'
+  },
+  '灵巧动作': {
+    class: '游荡者',
+    feature: '灵巧动作',
+    titleEn: 'Cunning Action',
+    brief: '[职业特性] 游荡者 - 灵巧动作 (Cunning Action) | 可以使用附赠动作执行【疾走】、【撤离】或【躲藏】动作。',
+    url: '玩家手册2024/角色职业/游荡者/游荡者.htm',
+    edition: '2024'
+  },
+  '回气': {
+    class: '战士',
+    feature: '回气',
+    titleEn: 'Second Wind',
+    brief: '[职业特性] 战士 - 回气 (Second Wind) | 附赠动作恢复 1d10+战士等级 点生命值。亦可用于战术思维：属性检定失败时消耗一次掷 1d10 加入结果。短休或长休恢复。',
+    url: '玩家手册2024/角色职业/战士/战士.htm',
+    edition: '2024'
+  },
+  '动作如潮': {
+    class: '战士',
+    feature: '动作如潮',
+    titleEn: 'Action Surge',
+    brief: '[职业特性] 战士 - 动作如潮 (Action Surge) | 在你的回合内，可以在通常动作外额外执行一个动作(不可用于再次执行魔法动作)。短休或长休恢复。',
+    url: '玩家手册2024/角色职业/战士/战士.htm',
+    edition: '2024'
+  },
+  '狂暴': {
+    class: '野蛮人',
+    feature: '狂暴',
+    titleEn: 'Rage',
+    brief: '[职业特性] 野蛮人 - 狂暴 (Rage) | 附赠动作进入狂暴。近战力量攻击获得额外加值(+2起)，获得钝击/穿刺/挥砍抗性，力量检定与豁免获优势。持续10分钟。',
+    url: '玩家手册2024/角色职业/野蛮人/野蛮人.htm',
+    edition: '2024'
+  },
+  '野性形态': {
+    class: '德鲁伊',
+    feature: '野性形态',
+    titleEn: 'Wild Shape',
+    brief: '[职业特性] 德鲁伊 - 野性形态 (Wild Shape) | 附赠动作变身成你已知形态的野兽。获得该野兽的临时生命值、速度与动作，保留自身智力/感知/魅力。',
+    url: '玩家手册2024/角色职业/德鲁伊/德鲁伊.htm',
+    edition: '2024'
+  },
+  '荒野形态': {
+    class: '德鲁伊',
+    feature: '野性形态',
+    titleEn: 'Wild Shape',
+    brief: '[职业特性] 德鲁伊 - 野性形态 (Wild Shape) | 附赠动作变身成你已知形态的野兽。获得该野兽的临时生命值、速度与动作。',
+    url: '玩家手册2024/角色职业/德鲁伊/德鲁伊.htm',
+    edition: '2024'
+  },
+  '疾风连击': {
+    class: '武僧',
+    feature: '疾风连击',
+    titleEn: 'Flurry of Blows',
+    brief: '[职业特性] 武僧 - 疾风连击 (Flurry of Blows) | 执行攻击动作后，消耗1点气(专注力)，以附赠动作发动两次徒手打击。',
+    url: '玩家手册2024/角色职业/武僧/武僧.htm',
+    edition: '2024'
+  },
+  '引导神力': {
+    class: '牧师/圣武士',
+    feature: '引导神力',
+    titleEn: 'Channel Divinity',
+    brief: '[职业特性] 牧师/圣武士 - 引导神力 (Channel Divinity) | 引导神圣能量引发特定神圣效应(如破除不死生物、神圣火花、圣疗)。短休或长休恢复。',
+    url: '玩家手册2024/角色职业/牧师/牧师.htm',
+    edition: '2024'
+  },
+  '诗人激励': {
+    class: '吟游诗人',
+    feature: '诗人激励',
+    titleEn: 'Bardic Inspiration',
+    brief: '[职业特性] 吟游诗人 - 诗人激励 (Bardic Inspiration) | 附赠动作给予60尺内可见生物一枚激励骰(1d6~1d12)，可在未来检定、攻击或伤害中加入。',
+    url: '玩家手册2024/角色职业/吟游诗人/吟游诗人.htm',
+    edition: '2024'
+  },
+  '超魔': {
+    class: '术士',
+    feature: '超魔',
+    titleEn: 'Metamagic',
+    brief: '[职业特性] 术士 - 超魔 (Metamagic) | 消耗术法点调整法术效应：瞬发(动作变附赠)、延时、孪生、强效、极效、微微妙法(免言语姿势)。',
+    url: '玩家手册2024/角色职业/术士/术士.htm',
+    edition: '2024'
+  }
 };
 
 /**
@@ -183,6 +281,37 @@ function querySqlite(command, query, isBrief, options = {}) {
 
   let qTrim = (query || '').trim();
   let activeCmd = command;
+
+  // 0. 优先检查职业核心特性直达
+  if (CLASS_FEATURES_MAP[qTrim]) {
+    const feat = CLASS_FEATURES_MAP[qTrim];
+    if (options.json) {
+      return {
+        found: true,
+        entry: {
+          id: 99900 + Object.keys(CLASS_FEATURES_MAP).indexOf(qTrim),
+          category: 'class_feature',
+          title: `${feat.class}：${feat.feature}`,
+          titleEn: feat.titleEn,
+          edition: feat.edition || '2024',
+          url: feat.url,
+          anchor: feat.feature,
+          brief: feat.brief,
+          content: feat.brief
+        },
+        related: []
+      };
+    }
+    console.log(`${colors.green}=== 找到条目: 【${feat.class}：${feat.feature} (${feat.titleEn})】 [2024/2025 修订版] ===${colors.reset}`);
+    console.log(`${colors.dim}来源: references/rules_source/${feat.url} #${feat.feature}${colors.reset}\n`);
+    if (isBrief) {
+      console.log(`${colors.yellow}[AI 紧凑数据卡]${colors.reset}`);
+      console.log(feat.brief);
+    } else {
+      console.log(feat.brief);
+    }
+    return true;
+  }
 
   // 检查口语别名重定向
   if (VERNACULAR_MAP[qTrim]) {

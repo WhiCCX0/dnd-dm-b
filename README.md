@@ -16,9 +16,13 @@
 - ⚡ **GBK 自动解码与极速检索器 (`scripts/lookup.js`)**：
   - 零内存浪费，5ms 遍历 8,356 个词条，毫秒级抓取任何怪物属性块、法术详述、武器专精、规则状态或魔法物品，自动剔除 HTML 标签转为优雅 Markdown 输出。
 - 🎲 **全平台跨平台骰子引擎 (`scripts/roll-dice.js`)**：
-  - 原生支持 Windows / macOS / Linux。支持算式、优势/劣势 (`--adv`/`--dis`)、暴击双倍 (`--crit`)、暗骰静默 (`--hidden`)、DC 判定与 4d6 留最高 3 (`4d6kh3`)。
+  - 原生支持 Windows / macOS / Linux。支持复合伤害与增益算式（如 `1d8+3+2d8`、`1d20+5+1d4`）、优势/劣势 (`--adv`/`--dis`)、暴击所有伤害骰双倍 (`--crit`)、暗骰静默 (`--hidden`)、DC 判定与 4d6 留最高 3 (`4d6kh3`)。
+- 💾 **轻量级战役状态持久化引擎 (`scripts/state.js`)**：
+  - 零外部 npm 依赖，原生管理玩家 HP（符合 5e 临时生命优先抵扣与浴血状态自动标记规则）、法术位消耗、金币物资与战报日志，支持一键长休/短休恢复并导出紧凑 HUD。
 - 🗺️ **战术战况图 (ASCII) 与 2024 专精呈现**：
   - 战斗轮自动输出战区态势图（远距、中距、近身、交战区），紧扣 2024 八大武器专精 (Graze/Sap/Topple/Vex/Nick/Push/Slow/Cleave) 与新版力竭/倒地/突袭规则。
+- ⚡ **敌方回合反应主动触发机制 (Reaction Triggers Prompt)**：
+  - 敌方移动离开 5 尺、敌方命中或敌方施法时，DM 自动暂停结算并主动征询玩家是否交反应（借机攻击、护盾术、诡诈闪避、法术反制、截击守护）。
 - 👥 **单人随从 (Sidekick) 系统**：
   - 为单人玩家配置忠诚性格随从（如猎人布兰、见习牧师米拉），解决动作经济性失衡，提升对话乐趣。
 
@@ -41,14 +45,20 @@ DM 将引导你完成开局三部曲：
 ### 2. 即时规则检索命令 (`scripts/lookup.js`)
 
 ```bash
-# 查询 2025/2014 怪物数值
-node scripts/lookup.js monster "地精武者"
-node scripts/lookup.js monster "黑蜘蛛"
+# 查询 2025/2014 怪物数值 (--brief 极简紧凑数据卡，极省 Token)
+node scripts/lookup.js monster "地精武者" --brief
+node scripts/lookup.js monster "黑蜘蛛" --brief
 node scripts/lookup.js monster "远古红龙"
 
 # 查询 2024 法术详情
-node scripts/lookup.js spell "火球术"
+node scripts/lookup.js spell "火球术" --brief
 node scripts/lookup.js spell "治愈真言"
+
+# 查询 2024 职业核心招牌机制 (0.1ms 直达)
+node scripts/lookup.js rule "偷袭" --brief
+node scripts/lookup.js rule "动作如潮" --brief
+node scripts/lookup.js rule "狂暴" --brief
+node scripts/lookup.js rule "灵巧动作" --brief
 
 # 查询 2024 规则与异常状态
 node scripts/lookup.js rule "倒地"
@@ -57,30 +67,31 @@ node scripts/lookup.js rule "力竭"
 
 # 查询魔法物品与武器装备
 node scripts/lookup.js item "次元袋"
-node scripts/lookup.js item "蜘蛛法杖"
-
-# 查询职业成长与扩展子职
-node scripts/lookup.js class "战士"
-node scripts/lookup.js class "奇械师"
+node scripts/lookup.js item "治疗药水"
 
 # 调取 38 部官方战役模组资源
 node scripts/lookup.js module "矿坑"
 node scripts/lookup.js module "冰塔峰"
-node scripts/lookup.js module "施特拉德"
-
-# 全库 8,356 条目模糊搜索
-node scripts/lookup.js search "回音骑士"
 ```
 
-### 3. 骰子引擎命令 (`scripts/roll-dice.js`)
+### 3. 骰子与状态引擎命令
 
 ```bash
-node scripts/roll-dice.js 1d20+5 --label "长剑攻击"
+# 复合算式与暴击翻倍
+node scripts/roll-dice.js 1d8+3+2d8 --label "长剑至圣斩"
+node scripts/roll-dice.js 1d8+3+2d8 --crit --label "至圣斩暴击！"
+node scripts/roll-dice.js 1d20+5+1d4 --dc 15 --label "祝福术加持攻击"
+
+# 优势 / 劣势掷骰
 node scripts/roll-dice.js 1d20+3 --adv --label "优势察觉检定"
-node scripts/roll-dice.js 2d6+3 --crit --label "巨剑暴击伤害！"
-node scripts/roll-dice.js 1d20+4 --dc 15 --label "开锁检定 vs DC 15"
-node scripts/roll-dice.js 1d20+6 --hidden --label "敌方隐匿暗骰"
-node scripts/roll-dice.js 4d6kh3 --label "力量属性骰点"
+node scripts/roll-dice.js 1d20+1 --dis --label "重甲劣势隐匿"
+
+# 战役状态持久化
+node scripts/state.js init goblin-cave --name "瓦伦" --class "战士" --hp 12 --ac 16
+node scripts/state.js update goblin-cave --hp -5 --location "哨塔前哨" # 自动结算临时生命与浴血
+node scripts/state.js update goblin-cave --slot 1 -1 --gold +20
+node scripts/state.js show goblin-cave --hud
+node scripts/state.js rest goblin-cave --long
 ```
 
 ---
@@ -94,14 +105,21 @@ dnd-dm-b/
 ├── dm-guide.md                       # 2024 中文版 DM 执裁与战术全景指南
 ├── package.json                      # 命令与脚本定义
 ├── references/
+│   ├── rules.db                      # 原生预编译 SQLite 规则库 (9,284 核心条目)
 │   ├── rules_source                  # 目录联结 (Directory Junction，零冗余链接 125MB 不全书)
 │   └── topics_index.json             # 预编译全书 8,356 条目高速 JSON 索引
 ├── scripts/
-│   ├── lookup.js                     # GBK 自动解码与 HTML 转 Markdown 极速检索器
-│   ├── build-index.js                # 从 不全书.wcp 编译 topics_index.json 的构建脚本
-│   ├── roll-dice.js                  # 跨平台 Node.js 骰子引擎
-│   ├── roll-dice.sh                  # Bash 骰子脚本
-│   └── speak-npc.js                  # 跨平台 NPC 语音朗读工具
+│   ├── lookup.js                     # 核心点查引擎 (毫秒级提取 2024 规则与职业特性)
+│   ├── roll-dice.js                  # 跨平台复合骰子引擎 (纯原生 Node.js)
+│   ├── state.js                      # 战役状态持久化与实时 HUD 生成器
+│   ├── speak-npc.js                  # 跨平台 NPC 语音朗读工具 (含本地 SAPI/say 降级)
+│   └── build-index.js                # 规则库索引构建脚本
+├── sessions/                         # 战役历史与玩家状态存档目录
+├── test/                             # 自动化单元测试套件 (33 项自动化测试全绿)
+│   ├── lookup.test.js
+│   ├── roll-dice.test.js
+│   ├── state.test.js
+│   └── speak-npc.test.js
 ├── resources/
 │   ├── starter-adventure/
 │   │   ├── official-modules-guide.md # 官方 38 部经典模组 DM 启动指南 (《矿坑》《冰塔峰》等)
@@ -111,6 +129,7 @@ dnd-dm-b/
 └── templates/
     ├── character-sheet.md            # 中文 2024 标准角色卡模板
     ├── combat-tracker.md             # 战术战况与先攻追踪模板
+    ├── hud-status-bar.md             # 极简 Markdown 实时状态栏规范
     ├── campaign-log.md               # 战役历史全量日志模板
     └── campaign-summary.md           # 战役状态单页摘要模板
 ```

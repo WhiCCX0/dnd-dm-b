@@ -81,3 +81,25 @@ test('lookup - 未匹配关键词优雅返回', () => {
   const result = lookup('search', '这是一个绝不可能存在的极其罕见的DND词条xyz789', { json: true });
   assert.equal(result.found, false);
 });
+
+test('lookup - 2024 核心职业招牌机制特性直达 (偷袭, 动作如潮, 灵巧动作, 狂暴)', () => {
+  const sneak = lookup('rule', '偷袭', { brief: true, json: true });
+  assert.equal(sneak.found, true);
+  assert.match(sneak.entry.title, /偷袭/);
+  assert.match(sneak.entry.brief, /游荡者/);
+
+  const surge = lookup('rule', '动作如潮', { brief: true, json: true });
+  assert.equal(surge.found, true);
+  assert.match(surge.entry.title, /动作如潮/);
+  assert.match(surge.entry.brief, /战士/);
+
+  const cunning = lookup('rule', '灵巧动作', { brief: true, json: true });
+  assert.equal(cunning.found, true);
+  assert.match(cunning.entry.title, /灵巧动作/);
+
+  const rage = lookup('rule', '狂暴', { brief: true, json: true });
+  assert.equal(rage.found, true);
+  assert.match(rage.entry.title, /狂暴/);
+  assert.match(rage.entry.brief, /野蛮人/);
+});
+

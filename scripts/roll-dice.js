@@ -103,15 +103,63 @@ function parseArgs(args) {
   return parsed;
 }
 
-function executeSingleRoll(expr, options) {
-  // Check for 4d6kh3 style notation (keep highest N)
-  const khMatch = expr.match(/^(\d+)?d(\d+)kh(\d+)([+-]\d+)?$/i);
-  if (khMatch) {
-    const numDice = parseInt(khMatch[1] || '1', 10);
-    const sides = parseInt(khMatch[2], 10);
-    const keepCount = parseInt(khMatch[3], 10);
-    const mod = parseInt(khMatch[4] || '0', 10);
+function parseDiceExpression(expr) {
+  const clean = expr.replace(/\s+/g, '');
+  if (!clean) {
+    throw new Error(`Invalid dice expression: "${expr}". Examples: 1d20+5, 2d6+1d8+3, 4d6kh3`);
+  }
 
+  // Check 4d6kh3 special syntax first (keep highest N)
+  const khMatch = clean.match(/^(\d+)?d(\d+)kh(\d+)([+-]\d+)?$/i);
+  if (khMatch) {
+    return {
+      type: 'kh',
+      numDice: parseInt(khMatch[1] || '1', 10),
+      sides: parseInt(khMatch[2], 10),
+      keepCount: parseInt(khMatch[3], 10),
+      mod: parseInt(khMatch[4] || '0', 10)
+    };
+  }
+
+  // Tokenize signed terms: e.g. "+1d8", "-2d6", "+5", "-3", "1d20"
+  const regex = /([+-]?)(?:(\d*)d(\d+)|(\d+))/gi;
+  const terms = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(clean)) !== null) {
+    if (match.index !== lastIndex) {
+      throw new Error(`Invalid dice expression: "${expr}". Examples: 1d20+5, 2d6+1d8+3, 4d6kh3`);
+    }
+    lastIndex = regex.lastIndex;
+
+    const sign = match[1] === '-' ? -1 : 1;
+    if (match[3] !== undefined) {
+      const count = parseInt(match[2] || '1', 10);
+      const sides = parseInt(match[3], 10);
+      if (count <= 0 || sides <= 0 || count > 100 || sides > 1000) {
+        throw new Error(`Dice count or sides out of range in "${expr}"`);
+      }
+      terms.push({ type: 'dice', sign, count, sides, raw: match[0] });
+    } else if (match[4] !== undefined) {
+      const val = parseInt(match[4], 10);
+      terms.push({ type: 'mod', sign, val: sign * val, raw: match[0] });
+    }
+  }
+
+  if (lastIndex !== clean.length || terms.length === 0) {
+    throw new Error(`Invalid dice expression: "${expr}". Examples: 1d20+5, 2d6+1d8+3, 4d6kh3`);
+  }
+
+  return { type: 'compound', terms };
+}
+
+function executeSingleRoll(expr, options) {
+  const parsed = parseDiceExpression(expr);
+
+  // 1. Keep-highest syntax (4d6kh3)
+  if (parsed.type === 'kh') {
+    const { numDice, sides, keepCount, mod } = parsed;
     const rolls = [];
     for (let i = 0; i < numDice; i++) rolls.push(rollDie(sides));
     const sorted = [...rolls].sort((a, b) => b - a);
@@ -128,68 +176,140 @@ function executeSingleRoll(expr, options) {
     };
   }
 
-  // Handle standard dice: [count]d[sides][+/-mod]
-  const stdMatch = expr.match(/^(\d+)?d(\d+)([+-]\d+)?$/i);
-  if (!stdMatch) {
-    throw new Error(`Invalid dice expression: "${expr}". Examples: 1d20+5, 2d6, 4d6kh3`);
-  }
+  const terms = parsed.terms;
+  const diceTerms = terms.filter(t => t.type === 'dice');
 
-  let numDice = parseInt(stdMatch[1] || '1', 10);
-  const sides = parseInt(stdMatch[2], 10);
-  const mod = parseInt(stdMatch[3] || '0', 10);
+  // 2. Simple single-dice expression (backward-compatible fast-path)
+  if (diceTerms.length === 1 && (terms.length === 1 || (terms.length === 2 && terms[1].type === 'mod'))) {
+    const diceTerm = diceTerms[0];
+    let numDice = diceTerm.count;
+    const sides = diceTerm.sides;
+    const mod = terms.length === 2 ? terms[1].val : 0;
 
-  if (options.crit && sides !== 20) {
-    numDice *= 2;
-  }
-
-  // Handle advantage / disadvantage on d20
-  if (sides === 20 && (options.advantage || options.disadvantage)) {
-    const r1 = rollDie(20);
-    const r2 = rollDie(20);
-    let chosen;
-    if (options.advantage && options.disadvantage) {
-      chosen = r1; // cancel out
-    } else if (options.advantage) {
-      chosen = Math.max(r1, r2);
-    } else {
-      chosen = Math.min(r1, r2);
+    if (options.crit && sides !== 20) {
+      numDice *= 2;
     }
-    const total = chosen + mod;
+
+    // Handle advantage / disadvantage on d20
+    if (sides === 20 && (options.advantage || options.disadvantage)) {
+      const r1 = rollDie(20);
+      const r2 = rollDie(20);
+      let chosen;
+      if (options.advantage && options.disadvantage) {
+        chosen = r1; // cancel out
+      } else if (options.advantage) {
+        chosen = Math.max(r1, r2);
+      } else {
+        chosen = Math.min(r1, r2);
+      }
+      const total = chosen + mod;
+
+      let d20Special = null;
+      if (chosen === 20) d20Special = 'NATURAL 20!';
+      else if (chosen === 1) d20Special = 'NATURAL 1!';
+
+      return {
+        expr: `${expr} (${options.advantage ? 'Advantage' : 'Disadvantage'})`,
+        rolls: [r1, r2],
+        chosen,
+        mod,
+        total,
+        d20Special
+      };
+    }
+
+    // Standard single roll
+    const rolls = [];
+    let sum = 0;
+    for (let i = 0; i < numDice; i++) {
+      const r = rollDie(sides);
+      rolls.push(r);
+      sum += r;
+    }
+    const total = sum + mod;
 
     let d20Special = null;
-    if (chosen === 20) d20Special = 'NATURAL 20!';
-    else if (chosen === 1) d20Special = 'NATURAL 1!';
+    if (sides === 20 && numDice === 1) {
+      if (rolls[0] === 20) d20Special = 'NATURAL 20!';
+      else if (rolls[0] === 1) d20Special = 'NATURAL 1!';
+    }
 
     return {
-      expr: `${expr} (${options.advantage ? 'Advantage' : 'Disadvantage'})`,
-      rolls: [r1, r2],
-      chosen,
+      expr,
+      rolls,
       mod,
       total,
       d20Special
     };
   }
 
-  // Standard roll
-  const rolls = [];
-  let sum = 0;
-  for (let i = 0; i < numDice; i++) {
-    const r = rollDie(sides);
-    rolls.push(r);
-    sum += r;
-  }
-  const total = sum + mod;
-
+  // 3. Compound multi-dice expression (e.g., 1d8+3+2d8, 1d20+5+1d4)
+  const allRolls = [];
+  const termResults = [];
+  let totalMod = 0;
+  let totalSum = 0;
   let d20Special = null;
-  if (sides === 20 && numDice === 1) {
-    if (rolls[0] === 20) d20Special = 'NATURAL 20!';
-    else if (rolls[0] === 1) d20Special = 'NATURAL 1!';
+
+  for (const term of terms) {
+    if (term.type === 'mod') {
+      totalMod += term.val;
+      termResults.push({ type: 'mod', value: term.val });
+    } else if (term.type === 'dice') {
+      let numDice = term.count;
+      if (options.crit && term.sides !== 20) {
+        numDice *= 2;
+      }
+
+      if (term.sides === 20 && numDice === 1 && (options.advantage || options.disadvantage)) {
+        const r1 = rollDie(20);
+        const r2 = rollDie(20);
+        let chosen;
+        if (options.advantage && options.disadvantage) chosen = r1;
+        else if (options.advantage) chosen = Math.max(r1, r2);
+        else chosen = Math.min(r1, r2);
+        allRolls.push(chosen);
+        totalSum += chosen * term.sign;
+        if (chosen === 20) d20Special = 'NATURAL 20!';
+        else if (chosen === 1 && !d20Special) d20Special = 'NATURAL 1!';
+        termResults.push({
+          type: 'dice',
+          expr: `${term.count}d${term.sides}`,
+          rolls: [r1, r2],
+          chosen,
+          sign: term.sign,
+          total: chosen * term.sign
+        });
+      } else {
+        const rolls = [];
+        let sum = 0;
+        for (let i = 0; i < numDice; i++) {
+          const r = rollDie(term.sides);
+          rolls.push(r);
+          allRolls.push(r);
+          sum += r;
+        }
+        if (term.sides === 20 && numDice === 1) {
+          if (rolls[0] === 20) d20Special = 'NATURAL 20!';
+          else if (rolls[0] === 1 && !d20Special) d20Special = 'NATURAL 1!';
+        }
+        totalSum += sum * term.sign;
+        termResults.push({
+          type: 'dice',
+          expr: `${numDice}d${term.sides}`,
+          rolls,
+          sign: term.sign,
+          total: sum * term.sign
+        });
+      }
+    }
   }
 
+  const total = totalSum + totalMod;
   return {
     expr,
-    rolls,
-    mod,
+    rolls: allRolls,
+    terms: termResults,
+    mod: totalMod,
     total,
     d20Special
   };
@@ -226,7 +346,17 @@ function main() {
       }
       console.log(`${colors.dim}Formula:${colors.reset} ${result.expr}`);
 
-      if (result.chosen !== undefined) {
+      if (result.terms && result.terms.length > 1) {
+        const breakdownStr = result.terms.map(t => {
+          if (t.type === 'mod') {
+            return t.value >= 0 ? `+ ${t.value}` : `- ${Math.abs(t.value)}`;
+          }
+          const signStr = t.sign < 0 ? '- ' : '';
+          const diceVals = t.chosen !== undefined ? `[${t.rolls.join(', ')} -> Kept ${t.chosen}]` : `[${t.rolls.join(', ')}]`;
+          return `${signStr}${t.expr} ${diceVals}`;
+        }).join(' ');
+        console.log(`${colors.dim}Terms:${colors.reset}   ${breakdownStr}`);
+      } else if (result.chosen !== undefined) {
         console.log(`${colors.dim}Dice:${colors.reset}    [${result.rolls.join(', ')}] -> Kept ${colors.bright}${result.chosen}${colors.reset}`);
       } else if (result.kept) {
         console.log(`${colors.dim}Dice:${colors.reset}    [${result.rolls.join(', ')}] -> Kept [${result.kept.join(', ')}]`);
@@ -235,8 +365,8 @@ function main() {
       }
 
       const modStr = result.mod > 0 ? ` + ${result.mod}` : result.mod < 0 ? ` - ${Math.abs(result.mod)}` : '';
-      const baseVal = result.chosen !== undefined ? result.chosen : result.kept ? result.kept.reduce((a,b)=>a+b,0) : result.rolls.reduce((a,b)=>a+b,0);
-      console.log(`${colors.bright}Result:${colors.reset}  ${colors.green}${colors.bright}${result.total}${colors.reset}${colors.dim}${modStr ? ` (${baseVal}${modStr})` : ''}${colors.reset}`);
+      const baseVal = result.total - result.mod;
+      console.log(`${colors.bright}Result:${colors.reset}  ${colors.green}${colors.bright}${result.total}${colors.reset}${colors.dim}${result.mod !== 0 ? ` (${baseVal}${modStr})` : ''}${colors.reset}`);
 
       if (result.d20Special) {
         const specialColor = result.d20Special.includes('20') ? colors.magenta : colors.red;
