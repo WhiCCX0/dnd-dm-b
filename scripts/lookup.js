@@ -82,7 +82,11 @@ function getDb() {
     try {
       sqliteDb = new DatabaseSync(dbPath, { readOnly: true });
       return sqliteDb;
-    } catch (_) {}
+    } catch (err) {
+      if (process.env.DEBUG) {
+        console.error(`[DB Warning] Failed to initialize SQLite database at ${dbPath}:`, err.message);
+      }
+    }
   }
   return null;
 }
@@ -173,11 +177,11 @@ const VERNACULAR_MAP = {
 /**
  * Execute query using SQLite B-Tree & FTS5
  */
-function querySqlite(command, query, isBrief) {
+function querySqlite(command, query, isBrief, options = {}) {
   const db = getDb();
-  if (!db) return false;
+  if (!db) return null;
 
-  let qTrim = query.trim();
+  let qTrim = (query || '').trim();
   let activeCmd = command;
 
   // 检查口语别名重定向
@@ -214,8 +218,30 @@ function querySqlite(command, query, isBrief) {
     const wildcard = `%${qTrim}%`;
     const rows = db.prepare(modSql).all(wildcard, wildcard, wildcard, wildcard);
     if (rows.length > 0) {
-      console.log(`${colors.green}=== 找到模组战役资源: 【${qTrim}】 (共匹配到 ${rows.length} 个条目) ===${colors.reset}\n`);
       const overview = rows.find(r => r.url.includes('介绍') || r.url.includes('总览') || r.url.includes('第一章') || r.url.endsWith('.htm')) || rows[0];
+      if (options.json) {
+        return {
+          found: true,
+          entry: {
+            id: overview.id,
+            category: 'module',
+            title: overview.title,
+            titleEn: overview.title_en,
+            edition: '5e',
+            url: overview.url,
+            anchor: '',
+            brief: overview.brief_md,
+            content: overview.content_md
+          },
+          related: rows.slice(0, 15).map(f => ({
+            id: f.id,
+            title: f.title,
+            titleEn: f.title_en,
+            url: f.url
+          }))
+        };
+      }
+      console.log(`${colors.green}=== 找到模组战役资源: 【${qTrim}】 (共匹配到 ${rows.length} 个条目) ===${colors.reset}\n`);
       console.log(`${colors.yellow}展示主篇内容: 【${overview.title}】 (${overview.url})${colors.reset}\n`);
       const dispText = isBrief && overview.brief_md ? overview.brief_md : (overview.content_md || overview.brief_md || '');
       console.log(dispText.slice(0, 1800) + '\n');
@@ -249,10 +275,12 @@ function querySqlite(command, query, isBrief) {
   }
 
   // 3. FTS5 Full-Text Match
-  if (rows.length === 0) {
+  if (rows.length === 0 && qTrim) {
     try {
-      const ftsQuery = qTrim.replace(/[^\w\u4e00-\u9fa5]/g, ' ').trim();
-      if (ftsQuery) {
+      const sanitized = qTrim.replace(/[^\w\u4e00-\u9fa5]/g, ' ').trim();
+      const tokens = sanitized.split(/\s+/).filter(Boolean);
+      if (tokens.length > 0) {
+        const ftsQuery = tokens.map(t => `"${t}"`).join(' ');
         let ftsSql = `
           SELECT e.id, e.category, e.title, e.title_en, e.aliases, e.url, e.anchor, e.edition, e.content_md, e.brief_md
           FROM entries_fts f
@@ -263,7 +291,11 @@ function querySqlite(command, query, isBrief) {
         ftsSql += ` ORDER BY (CASE WHEN e.edition = '2024' THEN 1 ELSE 2 END), rank LIMIT 6`;
         rows = db.prepare(ftsSql).all(ftsQuery);
       }
-    } catch (_) {}
+    } catch (err) {
+      if (process.env.DEBUG) {
+        console.error(`[FTS5 Warning] Search failed for query "${qTrim}":`, err.message);
+      }
+    }
   }
 
   // 4. Substring Contains Match
@@ -297,6 +329,29 @@ function querySqlite(command, query, isBrief) {
     const titleDisp = best.title_en ? `${best.title} (${best.title_en})` : best.title;
     const editionTag = best.edition === '2024' ? '[2024/2025 修订版]' : '[5e 经典版]';
 
+    if (options.json) {
+      return {
+        found: true,
+        entry: {
+          id: best.id,
+          category: best.category,
+          title: best.title,
+          titleEn: best.title_en,
+          edition: best.edition,
+          url: best.url,
+          anchor: best.anchor,
+          brief: best.brief_md,
+          content: best.content_md
+        },
+        related: rows.slice(1, 6).map(m => ({
+          id: m.id,
+          title: m.title,
+          titleEn: m.title_en,
+          url: m.url
+        }))
+      };
+    }
+
     console.log(`${colors.green}=== 找到条目: 【${titleDisp}】 ${editionTag} ===${colors.reset}`);
     console.log(`${colors.dim}来源: references/rules_source/${best.url}${best.anchor ? ' #' + best.anchor : ''}${colors.reset}\n`);
 
@@ -326,20 +381,21 @@ function querySqlite(command, query, isBrief) {
     return true;
   }
 
-  return false;
+  return null;
 }
 
 // ----------------------------------------------------
 // Fallback JSON Engine (If SQLite DB is missing)
 // ----------------------------------------------------
 
-function queryFallback(command, query, isBrief) {
+function queryFallback(command, query, isBrief, options = {}) {
   if (!fs.existsSync(indexFile)) {
+    if (options.json) return { found: false, error: 'Database and index not found' };
     console.error(`${colors.red}未找到数据库或索引文件。请先运行 'node scripts/build-db.js'。${colors.reset}`);
-    return;
+    return null;
   }
   const index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-  const qLower = query.toLowerCase().trim();
+  const qLower = (query || '').toLowerCase().trim();
 
   let matches = index.filter(t => t.title.toLowerCase() === qLower || 
     (t.titleEn && t.titleEn.toLowerCase() === qLower) ||
@@ -354,103 +410,118 @@ function queryFallback(command, query, isBrief) {
 
   if (matches.length > 0) {
     const best = matches.find(m => m.edition === '2024') || matches[0];
+    if (options.json) {
+      return {
+        found: true,
+        entry: {
+          id: best.id,
+          category: best.category || 'general',
+          title: best.title,
+          titleEn: best.titleEn || '',
+          edition: best.edition || '5e',
+          url: best.url || '',
+          anchor: best.anchor || '',
+          brief: best.title,
+          content: ''
+        },
+        related: matches.slice(1, 6).map(m => ({
+          id: m.id,
+          title: m.title,
+          titleEn: m.titleEn || '',
+          url: m.url || ''
+        }))
+      };
+    }
     console.log(`${colors.green}=== 找到条目 (JSON降级): 【${best.title}】 ===${colors.reset}\n`);
     console.log(`来源: references/rules_source/${best.url}`);
-    return;
+    return true;
   }
 
+  if (options.json) {
+    return { found: false, command, query };
+  }
   console.log(`${colors.red}未找到与 "${query}" 匹配的条目。${colors.reset}`);
+  return null;
+}
+
+/**
+ * Programmatic lookup API for Agent and In-Process Tools (<0.2ms)
+ */
+export function lookup(command, query, options = {}) {
+  const isBrief = Boolean(options.brief || options.agent || options.b || options.stat);
+  const isJson = Boolean(options.json || options.j);
+  const safeOpts = { ...options, brief: isBrief, json: isJson };
+
+  const sqlRes = querySqlite(command, query, isBrief, safeOpts);
+  if (sqlRes) return sqlRes;
+
+  const fbRes = queryFallback(command, query, isBrief, safeOpts);
+  if (fbRes) return fbRes;
+
+  if (isJson) {
+    return { found: false, command, query };
+  }
+  return false;
 }
 
 // ----------------------------------------------------
 // CLI 入口
 // ----------------------------------------------------
 
-const rawArgs = process.argv.slice(2);
-if (rawArgs.length === 0 || rawArgs[0] === '--help' || rawArgs[0] === '-h') {
-  printHelp();
-  process.exit(0);
-}
-
-let isBrief = false;
-const cleanArgs = [];
-
-for (const arg of rawArgs) {
-  if (arg === '--brief' || arg === '--agent' || arg === '-b' || arg === '--stat') {
-    isBrief = true;
-  } else if (arg === '--full' || arg === '-f') {
-    isBrief = false;
-  } else {
-    cleanArgs.push(arg);
+function cli() {
+  const rawArgs = process.argv.slice(2);
+  if (rawArgs.length === 0 || rawArgs[0] === '--help' || rawArgs[0] === '-h') {
+    printHelp();
+    process.exit(0);
   }
-}
 
-if (cleanArgs.length === 0) {
-  console.error(`${colors.red}错误: 请提供查询关键词。${colors.reset}`);
-  printHelp();
-  process.exit(1);
-}
+  let isBrief = false;
+  let isJson = false;
+  let isFull = false;
+  const cleanArgs = [];
 
-const command = cleanArgs[0].toLowerCase();
-const query = cleanArgs.slice(1).join(' ').trim();
+  for (const arg of rawArgs) {
+    if (arg === '--brief' || arg === '--agent' || arg === '-b' || arg === '--stat') {
+      isBrief = true;
+    } else if (arg === '--full' || arg === '-f') {
+      isFull = true;
+    } else if (arg === '--json' || arg === '-j') {
+      isJson = true;
+    } else {
+      cleanArgs.push(arg);
+    }
+  }
 
-if (!query) {
-  if (command !== 'search') {
+  if (cleanArgs.length === 0) {
     console.error(`${colors.red}错误: 请提供查询关键词。${colors.reset}`);
     printHelp();
     process.exit(1);
   }
+
+  const command = cleanArgs[0].toLowerCase();
+  const query = cleanArgs.slice(1).join(' ').trim();
+
+  if (!query && command !== 'search') {
+    console.error(`${colors.red}错误: 请提供查询关键词。${colors.reset}`);
+    printHelp();
+    process.exit(1);
+  }
+
+  const result = lookup(command, query, { brief: isBrief, full: isFull, json: isJson });
+  if (isJson) {
+    console.log(JSON.stringify(result, null, 2));
+  }
 }
 
-let handled = false;
-switch (command) {
-  case 'monster':
-  case 'monsters':
-  case '怪物':
-  case '生物':
-    handled = querySqlite('monster', query, isBrief);
-    break;
-  case 'spell':
-  case 'spells':
-  case '法术':
-    handled = querySqlite('spell', query, isBrief);
-    break;
-  case 'item':
-  case 'items':
-  case '物品':
-  case '装备':
-  case '宝藏':
-    handled = querySqlite('item', query, isBrief);
-    break;
-  case 'rule':
-  case 'rules':
-  case '规则':
-  case '术语':
-    handled = querySqlite('rule', query, isBrief);
-    break;
-  case 'condition':
-  case '状态':
-    handled = querySqlite('condition', query, isBrief);
-    break;
-  case 'class':
-  case 'classes':
-  case '职业':
-    handled = querySqlite('class', query, isBrief);
-    break;
-  case 'module':
-  case 'modules':
-  case '模组':
-  case '战役':
-    handled = querySqlite('module', query, isBrief);
-    break;
-  case 'search':
-  case 'find':
-  case '搜索':
-  default:
-    handled = querySqlite('search', `${command === 'search' ? '' : command} ${query}`.trim(), isBrief);
-    break;
+export { querySqlite, queryFallback, VERNACULAR_MAP };
+export default lookup;
+
+const isMain = process.argv[1] && (
+  path.resolve(process.argv[1]) === __filename ||
+  path.resolve(process.argv[1]) === path.resolve(__dirname, 'lookup.js')
+);
+
+if (isMain) {
+  cli();
 }
 
-if (!handled) {
-  queryFallback(command, query, isBrief);
-}

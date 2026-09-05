@@ -8,7 +8,8 @@
     "lookup": "node scripts/lookup.js",
     "build-index": "node scripts/build-index.js",
     "roll": "node scripts/roll-dice.js",
-    "speak": "node scripts/speak-npc.js"
+    "speak": "node scripts/speak-npc.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.22.0",

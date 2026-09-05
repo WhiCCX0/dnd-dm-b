@@ -17,6 +17,12 @@
  *   node scripts/roll-dice.js 4d6kh3 --label "Stat Roll (Drop Lowest)"
  */
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
@@ -252,4 +258,36 @@ function main() {
   }
 }
 
-main();
+/**
+ * Programmatic roll function for in-process execution (<0.1ms)
+ */
+export function roll(expr, options = {}) {
+  const parsedOpts = {
+    expr,
+    advantage: Boolean(options.advantage || options.adv),
+    disadvantage: Boolean(options.disadvantage || options.dis),
+    crit: Boolean(options.crit),
+    dc: options.dc !== undefined && options.dc !== null ? parseInt(options.dc, 10) : null,
+    hidden: Boolean(options.hidden),
+    label: options.label || '',
+    batch: options.batch || 1
+  };
+  const result = executeSingleRoll(expr, parsedOpts);
+  if (parsedOpts.dc !== null) {
+    result.success = result.total >= parsedOpts.dc;
+  }
+  return result;
+}
+
+export { executeSingleRoll, parseArgs };
+export default roll;
+
+const isMain = process.argv[1] && (
+  path.resolve(process.argv[1]) === __filename ||
+  path.resolve(process.argv[1]) === path.resolve(__dirname, 'roll-dice.js')
+);
+
+if (isMain) {
+  main();
+}
+
