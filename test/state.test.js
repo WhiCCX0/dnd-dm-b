@@ -8,7 +8,10 @@ import {
   updateState,
   applyRest,
   generateHud,
-  getSessionPath
+  getSessionPath,
+  addEncounterMob,
+  damageEncounterMob,
+  clearEncounter
 } from '../scripts/state.js';
 
 const TEST_CAMPAIGN = 'unit-test-campaign';
@@ -125,3 +128,59 @@ test('state - HUD 状态栏文本生成', () => {
   assert.ok(hudCombat.includes('行动仪表盘'));
   assert.ok(hudCombat.includes('雷恩'));
 });
+
+test('state - 遭遇战怪物小队生成与管理 (mob-add)', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+  const state = addEncounterMob(TEST_CAMPAIGN, {
+    name: '地精武者',
+    hp: 10,
+    ac: 15,
+    count: 2,
+    init: 14
+  });
+
+  assert.equal(state.status.inCombat, true, '应标记进入战斗状态');
+  assert.equal(state.status.encounter.active, true, '遭遇战应激活');
+  assert.equal(state.status.encounter.mobs.length, 2, '应生成 2 只怪物');
+  assert.equal(state.status.encounter.mobs[0].id, '地精武者-1');
+  assert.equal(state.status.encounter.mobs[0].hp, 10);
+  assert.equal(state.status.encounter.mobs[0].ac, 15);
+  assert.equal(state.status.encounter.mobs[0].initiative, 14);
+  assert.equal(state.status.encounter.mobs[1].id, '地精武者-2');
+});
+
+test('state - 遭遇战怪物受击、浴血与阵亡判定 (mob-hit)', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+  addEncounterMob(TEST_CAMPAIGN, { name: '兽人狂战士', hp: 20, ac: 13, count: 1 });
+
+  // 受到 12 点伤害 -> 剩余 8/20 (低于一半，触发浴血)
+  let state = damageEncounterMob(TEST_CAMPAIGN, '兽人狂战士', 12);
+  let mob = state.status.encounter.mobs[0];
+  assert.equal(mob.hp, 8);
+  assert.ok(mob.conditions.includes('浴血'), '跌破半血应获得浴血状态');
+
+  // 受到致命 10 点伤害 -> 归零，触发阵亡
+  state = damageEncounterMob(TEST_CAMPAIGN, '兽人狂战士', 10);
+  mob = state.status.encounter.mobs[0];
+  assert.equal(mob.hp, 0);
+  assert.ok(mob.conditions.includes('阵亡'), '生命归零应标记阵亡');
+});
+
+test('state - 遭遇战清理与 HUD 怪物列表呈现 (mob-clear & HUD)', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+  addEncounterMob(TEST_CAMPAIGN, { name: '地精武者', hp: 10, ac: 15, count: 2 });
+  damageEncounterMob(TEST_CAMPAIGN, '地精武者-1', 6);
+
+  let state = getState(TEST_CAMPAIGN);
+  const hud = generateHud(state, 'combat');
+  assert.ok(hud.includes('敌方战斗目标'), 'HUD 应包含怪物目标清单');
+  assert.ok(hud.includes('地精武者-1'), 'HUD 应包含地精武者-1');
+  assert.ok(hud.includes('浴血'), '受损怪物应显示浴血');
+
+  // 清理遭遇战
+  state = clearEncounter(TEST_CAMPAIGN);
+  assert.equal(state.status.inCombat, false);
+  assert.equal(state.status.encounter.mobs.length, 0);
+  assert.equal(state.status.round, 0);
+});
+

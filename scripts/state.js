@@ -89,7 +89,11 @@ export function defaultState(campaignName, options = {}) {
       location: options.location || '初始冒险营地',
       quest: options.quest || '探索未知区域',
       round: 0,
-      inCombat: false
+      inCombat: false,
+      encounter: {
+        active: false,
+        mobs: []
+      }
     },
     log: [
       {
@@ -390,6 +394,135 @@ export function applyRest(campaignName, restType = 'short') {
   return saveState(campaignName, state);
 }
 
+export function addEncounterMob(campaignName, options = {}) {
+  let state = getState(campaignName);
+  if (!state) state = defaultState(campaignName);
+  if (!state.status.encounter) {
+    state.status.encounter = { active: false, mobs: [] };
+  }
+
+  const name = options.name || '敌方目标';
+  const maxHp = parseInt(options.hp || options.maxHp || '10', 10);
+  const ac = parseInt(options.ac || '12', 10);
+  const count = parseInt(options.count || '1', 10);
+  const init = options.init !== undefined ? parseInt(options.init, 10) : null;
+
+  const added = [];
+  for (let i = 1; i <= count; i++) {
+    const id = count > 1 ? `${name}-${i}` : name;
+    const mob = {
+      id,
+      name,
+      hp: maxHp,
+      maxHp,
+      ac,
+      initiative: init,
+      conditions: []
+    };
+    const existingIdx = state.status.encounter.mobs.findIndex(m => m.id === id);
+    if (existingIdx !== -1) {
+      state.status.encounter.mobs[existingIdx] = mob;
+    } else {
+      state.status.encounter.mobs.push(mob);
+    }
+    added.push(mob);
+  }
+
+  state.status.encounter.active = true;
+  state.status.inCombat = true;
+  if (!state.status.round) state.status.round = 1;
+
+  state.log.push({
+    timestamp: new Date().toISOString(),
+    action: '加入遭遇战敌方',
+    detail: `新增 ${added.map(m => `【${m.id}】(HP ${m.hp}/${m.maxHp}, AC ${m.ac})`).join(', ')}`
+  });
+
+  return saveState(campaignName, state);
+}
+
+export function damageEncounterMob(campaignName, target, damageOrHeal) {
+  const state = getState(campaignName);
+  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
+  if (!state.status.encounter || !state.status.encounter.mobs || !state.status.encounter.mobs.length) {
+    throw new Error(`当前战役 "${campaignName}" 无进行中的遭遇战敌方`);
+  }
+
+  const targetStr = String(target).trim().toLowerCase();
+  const mob = state.status.encounter.mobs.find(m =>
+    m.id.toLowerCase() === targetStr ||
+    m.name.toLowerCase() === targetStr ||
+    m.id.toLowerCase().includes(targetStr)
+  );
+
+  if (!mob) {
+    throw new Error(`未找到匹配的敌方目标: "${target}"`);
+  }
+
+  const val = parseInt(damageOrHeal, 10);
+  let logDetail = '';
+
+  if (val >= 0) {
+    mob.hp = Math.max(0, mob.hp - val);
+    logDetail = `【${mob.id}】受到 ${val} 点伤害 (当前HP: ${mob.hp}/${mob.maxHp})`;
+  } else {
+    const heal = Math.abs(val);
+    mob.hp = Math.min(mob.maxHp, mob.hp + heal);
+    logDetail = `【${mob.id}】恢复 ${heal} 点生命 (当前HP: ${mob.hp}/${mob.maxHp})`;
+  }
+
+  // 浴血判定 (Bloodied: HP <= 50% maxHp and > 0)
+  const bloodiedIdx = mob.conditions.indexOf('浴血');
+  if (mob.hp > 0 && mob.hp <= Math.floor(mob.maxHp / 2)) {
+    if (bloodiedIdx === -1) {
+      mob.conditions.push('浴血');
+      logDetail += `，进入【浴血】状态`;
+    }
+  } else if (bloodiedIdx !== -1) {
+    mob.conditions.splice(bloodiedIdx, 1);
+    logDetail += `，解除【浴血】状态`;
+  }
+
+  // 阵亡判定
+  const deadIdx = mob.conditions.indexOf('阵亡');
+  if (mob.hp === 0) {
+    if (deadIdx === -1) {
+      mob.conditions.push('阵亡');
+      logDetail += `，已【阵亡】倒下！`;
+    }
+  } else if (deadIdx !== -1) {
+    mob.conditions.splice(deadIdx, 1);
+  }
+
+  state.log.push({
+    timestamp: new Date().toISOString(),
+    action: '敌方血量变动',
+    detail: logDetail
+  });
+
+  return saveState(campaignName, state);
+}
+
+export function clearEncounter(campaignName) {
+  const state = getState(campaignName);
+  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
+
+  if (state.status.encounter) {
+    state.status.encounter.mobs = [];
+    state.status.encounter.active = false;
+  }
+  state.status.round = 0;
+  state.status.inCombat = false;
+
+  state.log.push({
+    timestamp: new Date().toISOString(),
+    action: '遭遇战结束',
+    detail: '战场已清理，重置战斗轮次与敌方态势'
+  });
+
+  return saveState(campaignName, state);
+}
+
 export function generateHud(state, mode = 'line') {
   const char = state.character;
   const hp = char.hp;
@@ -398,9 +531,18 @@ export function generateHud(state, mode = 'line') {
   const inspStr = char.heroicInspiration ? ' [激励●]' : '';
   const conds = state.status.conditions.length > 0 ? ` [状态: ${state.status.conditions.join(', ')}]` : '';
 
+  let mobsLine = '';
+  if (state.status.encounter && state.status.encounter.mobs && state.status.encounter.mobs.length > 0) {
+    const mobList = state.status.encounter.mobs.map(m => {
+      const condStr = m.conditions.length > 0 ? ` [${m.conditions.join(',')}]` : '';
+      return `${m.id}(${m.hp}/${m.maxHp}${condStr})`;
+    }).join(', ');
+    mobsLine = `\n👾 敌方态势: [${mobList}]`;
+  }
+
   if (mode === 'line') {
     return `-----------------------------------------------------------------------------------------
-📊 队伍状态: [🩸${char.name}(Lv${char.level} ${char.class}) HP: ${hp.current}/${hp.max}${tempStr}${bloodied} | 🛡️AC: ${char.ac}${inspStr}${conds}] | 🎒剩余金币: ${state.inventory.gold}gp | 📍${state.status.location}
+📊 队伍状态: [🩸${char.name}(Lv${char.level} ${char.class}) HP: ${hp.current}/${hp.max}${tempStr}${bloodied} | 🛡️AC: ${char.ac}${inspStr}${conds}] | 🎒剩余金币: ${state.inventory.gold}gp | 📍${state.status.location}${mobsLine}
 -----------------------------------------------------------------------------------------`;
   }
 
@@ -410,12 +552,22 @@ export function generateHud(state, mode = 'line') {
     .map(([lvl, s]) => `${lvl}环: [${'●'.repeat(s.current)}${'○'.repeat(s.max - s.current)}]`)
     .join(' | ');
 
+  let mobsDashboard = '';
+  if (state.status.encounter && state.status.encounter.mobs && state.status.encounter.mobs.length > 0) {
+    const lines = state.status.encounter.mobs.map(m => {
+      const condStr = m.conditions.length > 0 ? ` [${m.conditions.join(', ')}]` : '';
+      const initStr = m.initiative !== null ? ` | 先攻 ${m.initiative}` : '';
+      return `  • ${m.id}: 🩸 HP ${m.hp}/${m.maxHp} | 🛡️ AC ${m.ac}${initStr}${condStr}`;
+    }).join('\n');
+    mobsDashboard = `\n[敌方战斗目标]:\n${lines}`;
+  }
+
   return `====================================== 角色行动仪表盘 ======================================
 [当前先攻者]: ${char.name} (${char.class} Lv${char.level}) | 战斗第 ${state.status.round || 1} 轮
 [生命状态]: 🩸 HP: ${hp.current}/${hp.max}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${conds}
 [法术位资源]: ${slotsText || '无施法资源'}
 [金币与物资]: 💰 ${state.inventory.gold}gp | 🎒 ${state.inventory.items.map(i => `${i.name}x${i.count}`).join(', ')}
-[当前位置与目标]: 📍 ${state.status.location} | 🎯 ${state.status.quest}
+[当前位置与目标]: 📍 ${state.status.location} | 🎯 ${state.status.quest}${mobsDashboard}
 ==========================================================================================`;
 }
 
@@ -428,6 +580,9 @@ ${colors.yellow}指令:${colors.reset}
   show <campaign> [options]    显示战役当前状态 (支持 --hud, --json)
   update <campaign> [options]  实时更新生命、法术位、金币、物品与状态
   rest <campaign> <--short|--long> 执行短休或长休恢复
+  mob-add <campaign> [options] 遭遇战加入敌方怪物 (--name <名> --hp <血> --ac <甲> --count <数> --init <先攻>)
+  mob-hit <campaign> [options] 扣减或恢复敌方生命 (--target <目标名/编号> --damage <伤害值>)
+  mob-clear <campaign>         遭遇战结束，清理战场所有怪物与轮次
 
 ${colors.yellow}初始化选项 (init):${colors.reset}
   --name <name>         角色名 (默认: 冒险者)
@@ -454,6 +609,12 @@ ${colors.yellow}更新选项 (update):${colors.reset}
   --location <text>     更新当前地图与位置
   --quest <text>        更新当前主线/剧情目标
   --round <+/-N | N>    更新战斗轮次计数
+
+${colors.yellow}遭遇战怪物选项 (mob-add / mob-hit):${colors.reset}
+  --target <id/name>    目标怪物 ID (如: 地精武者-1)
+  --damage <N>          对目标造成的伤害点数
+  --count <N>           生成怪物数量 (默认: 1)
+  --init <N>            怪物先攻检定值
 `);
 }
 
@@ -489,6 +650,10 @@ function parseCliArgs(args) {
     else if (arg === '--location') options.location = args[++i];
     else if (arg === '--quest') options.quest = args[++i];
     else if (arg === '--round') options.round = args[++i];
+    else if (arg === '--target') options.target = args[++i];
+    else if (arg === '--damage') options.damage = args[++i];
+    else if (arg === '--count') options.count = args[++i];
+    else if (arg === '--init') options.init = args[++i];
   }
 
   return { command, campaign, options };
@@ -535,8 +700,26 @@ function main() {
       const state = applyRest(campaign, restType);
       console.log(`${colors.green}✓ 战役 "${campaign}" 完成${restType === 'long' ? '长休' : '短休'}！${colors.reset}\n`);
       console.log(generateHud(state, 'line'));
+    } else if (command === 'mob-add') {
+      const state = addEncounterMob(campaign, options);
+      console.log(`${colors.green}✓ 遭遇战怪物已加入 "${campaign}"！${colors.reset}\n`);
+      console.log(generateHud(state, 'combat'));
+    } else if (command === 'mob-hit') {
+      const target = options.target || options.name;
+      const dmg = options.damage || options.hp || 0;
+      if (!target) {
+        console.error(`${colors.red}错误: 请通过 --target 指定受击目标 (例如: --target "地精武者-1")${colors.reset}`);
+        process.exit(1);
+      }
+      const state = damageEncounterMob(campaign, target, dmg);
+      console.log(`${colors.green}✓ 目标 "${target}" 结算完成！${colors.reset}\n`);
+      console.log(generateHud(state, 'combat'));
+    } else if (command === 'mob-clear') {
+      const state = clearEncounter(campaign);
+      console.log(`${colors.green}✓ 战役 "${campaign}" 遭遇战已清空，退出战斗轮！${colors.reset}\n`);
+      console.log(generateHud(state, 'line'));
     } else {
-      console.error(`${colors.red}未知指令: "${command}"。请使用 init, show, update, 或 rest。${colors.reset}`);
+      console.error(`${colors.red}未知指令: "${command}"。请使用 init, show, update, rest, mob-add, mob-hit, 或 mob-clear。${colors.reset}`);
       process.exit(1);
     }
   } catch (err) {

@@ -26,9 +26,25 @@ const candidates = [
 ];
 
 let rulesRoot = candidates.find(p => fs.existsSync(p));
+const targetJson = path.resolve(__dirname, '../references/topics_index.json');
+const isForce = process.argv.includes('--force') || process.argv.includes('-f');
+
 if (!rulesRoot) {
-  console.error('Error: rules_source directory not found in candidates:', candidates);
-  process.exit(1);
+  if (fs.existsSync(targetJson)) {
+    const stat = fs.statSync(targetJson);
+    console.log(`\x1b[33m🛡️ [Index 构建保护锁]\x1b[0m 未检测到 rules_source 原始 HTML 目录。`);
+    console.log(`现有的预编译索引 \x1b[32m${targetJson}\x1b[0m (${(stat.size / (1024 * 1024)).toFixed(1)} MB) 完好无损，已受写保护。`);
+    console.log(`如需重新从 HTML 构建，请挂载 rules_source 目录并使用 --force 运行。`);
+    process.exit(0);
+  } else {
+    console.error('\x1b[31mError: rules_source directory not found in candidates:\x1b[0m', candidates);
+    process.exit(1);
+  }
+}
+
+if (fs.existsSync(targetJson) && !isForce) {
+  console.log(`\x1b[33m[Index Warning]\x1b[0m ${targetJson} 已存在。若需全量覆盖重建，请添加 --force 参数。`);
+  process.exit(0);
 }
 
 const wcpPath = path.join(rulesRoot, '不全书.wcp');
@@ -36,8 +52,6 @@ if (!fs.existsSync(wcpPath)) {
   console.error('Error: 不全书.wcp not found at:', wcpPath);
   process.exit(1);
 }
-
-const targetJson = path.resolve(__dirname, '../references/topics_index.json');
 
 console.log(`Starting deep indexing from rules_source: ${rulesRoot}`);
 console.time('TotalDeepIndex');
@@ -48,7 +62,10 @@ function readGbk(filePath) {
   const buf = fs.readFileSync(filePath);
   try {
     return new TextDecoder('gbk').decode(buf);
-  } catch (_) {
+  } catch (err) {
+    if (process.env.DEBUG) {
+      console.warn(`[Encoding Warning] GBK decode failed for ${filePath}, falling back to UTF-8:`, err.message);
+    }
     return new TextDecoder('utf-8').decode(buf);
   }
 }

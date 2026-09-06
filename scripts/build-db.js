@@ -23,19 +23,34 @@ const candidates = [
   path.resolve(__dirname, '../../DND_5e_Rules/rules_source')
 ];
 let rulesRoot = candidates.find(p => fs.existsSync(p));
+
+const dbPath = path.resolve(__dirname, '../references/rules.db');
+const indexFile = path.resolve(__dirname, '../references/topics_index.json');
+const isForce = process.argv.includes('--force') || process.argv.includes('-f');
+
 if (!rulesRoot) {
-  console.error('Error: rules_source directory not found in candidates:', candidates);
-  process.exit(1);
+  if (fs.existsSync(dbPath)) {
+    const stat = fs.statSync(dbPath);
+    console.log(`\x1b[33m🛡️ [DB 构建保护锁]\x1b[0m 未检测到 rules_source 原始 HTML 目录。`);
+    console.log(`现有的预编译数据库 \x1b[32m${dbPath}\x1b[0m (${(stat.size / (1024 * 1024)).toFixed(1)} MB) 完好无损，已受写保护。`);
+    console.log(`如需重新从 HTML 构建，请挂载 rules_source 目录并使用 --force 运行。`);
+    process.exit(0);
+  } else {
+    console.error('\x1b[31mError: rules_source directory not found in candidates:\x1b[0m', candidates);
+    process.exit(1);
+  }
 }
 
-const indexFile = path.resolve(__dirname, '../references/topics_index.json');
 if (!fs.existsSync(indexFile)) {
   console.error('Error: topics_index.json not found. Run scripts/build-index.js first.');
   process.exit(1);
 }
 
-const dbPath = path.resolve(__dirname, '../references/rules.db');
 if (fs.existsSync(dbPath)) {
+  if (!isForce) {
+    console.log(`\x1b[33m[DB Warning]\x1b[0m ${dbPath} 已存在。若需全量覆盖重建，请添加 --force 参数。`);
+    process.exit(0);
+  }
   fs.unlinkSync(dbPath);
 }
 
@@ -83,7 +98,10 @@ function readGbk(relPath) {
   const buf = fs.readFileSync(full);
   try {
     return new TextDecoder('gbk').decode(buf);
-  } catch (_) {
+  } catch (err) {
+    if (process.env.DEBUG) {
+      console.warn(`[Encoding Warning] GBK decode failed for ${relPath}, falling back to UTF-8:`, err.message);
+    }
     return new TextDecoder('utf-8').decode(buf);
   }
 }

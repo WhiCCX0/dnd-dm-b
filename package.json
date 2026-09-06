@@ -1,6 +1,6 @@
 {
   "name": "dnd-dm-b-skill",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "D&D 5e 中文全规则跑团地下城主 (DM) 技能 (B版: 整合 DND5e 不全书 7,000+ 中文规则与 38 部官方模组)",
   "type": "module",
   "main": "scripts/lookup.js",
@@ -9,12 +9,7 @@
     "build-index": "node scripts/build-index.js",
     "roll": "node scripts/roll-dice.js",
     "state": "node scripts/state.js",
-    "speak": "node scripts/speak-npc.js",
     "test": "node --test test/*.test.js"
-  },
-  "dependencies": {
-    "@elevenlabs/elevenlabs-js": "^2.22.0",
-    "dotenv": "^16.4.5"
   },
   "keywords": [
     "dnd",
