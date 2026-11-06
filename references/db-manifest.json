@@ -1,0 +1,11 @@
+{
+  "version": "2.2.0",
+  "upstreamRepo": "https://github.com/DND5eChm/5echm_web.git",
+  "upstreamCommit": "c1425c8",
+  "releaseArchiveName": "dnd-dm-b-rules-db-v2.2.0.tar.gz",
+  "releaseUrl": "https://github.com/WhiCCX0/dnd-dm-b/releases/download/v2.2.0/dnd-dm-b-rules-db-v2.2.0.tar.gz",
+  "sha256": "0b495efb0952aaef4f693aa59abda40feb3982ae9faf10af25a6ad63d58c08f1",
+  "archiveBytes": 66175625,
+  "rulesDbBytes": 129536000,
+  "topicsIndexBytes": 2417914
+}

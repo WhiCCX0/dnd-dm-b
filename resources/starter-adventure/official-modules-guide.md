@@ -10,60 +10,60 @@
 
 ### 1. 《秽染溪泉》(The Fouled Stream) — 1 级官方完整冒险 ⭐⭐⭐⭐⭐
 - **主持包路径：** `resources/starter-adventure/dmg-1-fouled-stream.md`
-- **风格与剧情：** 野外追踪 + 洞窟净化。受树人**波罗果芙**委托，逆流调查被异界裂隙与心能灰泥怪污染的林间溪泉，通关奖励魔法物品**《鲜花法杖》**。
+- **风格与剧情：** 野外追踪 + 洞窟净化。受上厄里村住民或自由城市灰鹰委托，逆流调查支流污染并偶遇树人**波罗果芙**（获赠魔法橡子），破坏水中外来脑状真菌与**心能灰泥怪**，通关获赠魔法物品**《鲜花法杖》**。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "秽染溪泉"
-  node scripts/lookup.js monster "树人" --brief
-  node scripts/lookup.js monster "枯枝怪" --brief
-  node scripts/lookup.js monster "啵灵蛙武者" --brief
-  node scripts/lookup.js monster "心能灰泥怪" --brief
-  node scripts/lookup.js item "鲜花法杖" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "秽染溪泉"
+  node <SKILL_DIR>/scripts/lookup.js monster "树人" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "枯枝怪" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "啵灵蛙武者" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "心能灰泥怪" --brief
+  node <SKILL_DIR>/scripts/lookup.js item "鲜花法杖" --brief
   ```
 
 ### 2. 《矿洞惊魂》(Miner Difficulties) — 2 级官方完整冒险 ⭐⭐⭐⭐⭐
 - **主持包路径：** `resources/starter-adventure/dmg-2-miner-difficulties.md`
-- **风格与剧情：** 幽暗矿井搜救 + 地下城探索。受黑石镇矮人镇长**克里斯崔蒂·裂砧**雇佣，深入被幽暗地域生物侵入的银矿搜救矿工，决战**恐爪怪**，奖励 500 GP 黄玉。
+- **风格与剧情：** 废弃银矿调查 + 多解法地下城探索。受黑石镇矮人镇长**克里斯崔蒂·裂砧 (Kristryd Splitanvil)** 雇佣，杀掉或驱离迫使矿工弃井的怪物（可清开底层东南角碎石让**恐爪怪**自行返回幽暗地域），奖励 500 GP 黄玉。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "矿洞惊魂"
-  node scripts/lookup.js monster "锈蚀怪" --brief
-  node scripts/lookup.js monster "凝胶方块" --brief
-  node scripts/lookup.js monster "恐爪怪" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "矿洞惊魂"
+  node <SKILL_DIR>/scripts/lookup.js monster "锈蚀怪" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "凝胶方块" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "恐爪怪" --brief
   ```
 
 ### 3. 《有翼之神》(The Winged God) — 3 级官方完整冒险 ⭐⭐⭐⭐⭐
 - **主持包路径：** `resources/starter-adventure/dmg-3-winged-god.md`
-- **风格与剧情：** 营救人质 + 屠龙初体验。潜入地热翻涌的发光洞窟，粉碎狗头人部落的狂热崇拜，击败它们奉为神明的**红龙雏龙**。
+- **风格与剧情：** 营救被绑镇民 + 屠龙初体验。在石冢山地追踪狗头人进入地下洞窟，接受厌倦恶龙暴政的狗头人求援，解救人质并击败被奉为“有翼之神”的**红龙雏龙**。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "有翼之神"
-  node scripts/lookup.js monster "狗头人武者" --brief
-  node scripts/lookup.js monster "带翼狗头人" --brief
-  node scripts/lookup.js monster "红龙雏龙" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "有翼之神"
+  node <SKILL_DIR>/scripts/lookup.js monster "狗头人武者" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "带翼狗头人" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "红龙雏龙" --brief
   ```
 
 ### 4. 《兽之角冠》(Horns of the Beast) — 5 级官方完整冒险 ⭐⭐⭐⭐
 - **主持包路径：** `resources/starter-adventure/dmg-4-horns-of-the-beast.md`
-- **风格与剧情：** 抢滩登陆 + 恐龙丛林 + 恶魔神庙背叛。护送学者梅尔奇斯登岛探寻遗迹，突破鲨华鱼人、流沙巨鳄与巴弗灭的牛头人防线，最终粉碎梅尔奇斯化身**狂蟾魔**的阴谋，赢取《次元袋》与 3,000 GP 金条。
+- **风格与剧情：** 抢滩登陆 + 恐龙丛林 + 恶魔遗迹背叛。护送商人梅尔奇斯前往艾美迪奥丛林寻访埃乌兹神殿遗迹，突破鲨华鱼人、丛林恐龙、流沙巨鳄与巴弗灭的牛头人防线，粉碎梅尔奇斯夺取角冠化身**狂蟾魔**的阴谋，赢取《次元袋》与 2,000 GP 贸易金属条等重宝。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "兽之角冠"
-  node scripts/lookup.js monster "鲨华鱼人祭司" --brief
-  node scripts/lookup.js monster "巴弗灭的牛头人" --brief
-  node scripts/lookup.js monster "狂蟾魔" --brief
-  node scripts/lookup.js item "次元袋" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "兽之角冠"
+  node <SKILL_DIR>/scripts/lookup.js monster "鲨华祭司" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "巴弗灭的牛头人" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "狂蟾魔" --brief
+  node <SKILL_DIR>/scripts/lookup.js item "次元袋" --brief
   ```
 
 ### 5. 《北风舞会》(Boreal Ball) — 7 级官方完整冒险 ⭐⭐⭐⭐⭐
 - **主持包路径：** `resources/starter-adventure/dmg-5-boreal-ball.md`
-- **风格与剧情：** 妖精荒野宫廷社交 + 舞池决斗。在三支舞曲内与半羊人、树精、皮克精、绿鬼婆、魔法师周旋积累 6 点声望，击退闯入挑衅的大地精长官瓦卡，赢取【北风舞会护咒】。
+- **风格与剧情：** 妖精荒野冰之宫殿社交 + 舞池解围。与半羊人欢庆之主、树精、皮克精、绿鬼婆、魔法师比试周旋，击退闯入舞厅挑衅的大地精长官瓦卡，赢取【北风舞会护咒】。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "北风舞会"
-  node scripts/lookup.js monster "半羊人欢庆之主" --brief
-  node scripts/lookup.js monster "绿鬼婆" --brief
-  node scripts/lookup.js monster "大地精长官" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "北风舞会"
+  node <SKILL_DIR>/scripts/lookup.js monster "半羊人欢庆之主" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "绿鬼婆" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "大地精长官" --brief
   ```
 
 ---
@@ -76,35 +76,35 @@
 - **库内可用附录：** 专属怪物与 NPC 图鉴（黑蜘蛛那兹纳尔、红标帮恶棍、莫메斯克等 10 项）+ 专属魔法物品（光耀武器、蜘蛛法杖等）。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "矿坑"
-  node scripts/lookup.js monster "黑蜘蛛" --brief
-  node scripts/lookup.js monster "地精武者" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "矿坑"
+  node <SKILL_DIR>/scripts/lookup.js monster "黑蜘蛛" --brief
+  node <SKILL_DIR>/scripts/lookup.js monster "地精武者" --brief
   ```
 
 ### 2. 《冰塔峰巨龙》(Dragon of Icespire Peak)
 - **库内可用附录：** 协力者（Sidekick）完整规则与预设卡、模组生物图鉴（石矮人、半兽人锚人等）。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "冰塔峰"
-  node scripts/lookup.js monster "青年白龙" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "冰塔峰"
+  node <SKILL_DIR>/scripts/lookup.js monster "青年白龙" --brief
   ```
 
 ### 3. 《施特拉德的诅咒》(Curse of Strahd)
-- **库内可用附录：** 鸦阁魔域专属生物与 NPC 图鉴（施特拉德、芭芭·丽萨嘎、艾丝美拉达等 25 项）、专属神器与魔法物品（鸦族圣徽/日圣符、太阳剑、血矛等）、施特拉德手记与鬼屋背景。
+- **库内可用附录：** 鸦阁魔域专属生物与 NPC 图鉴（施特拉德、芭芭·莱萨迦、艾丝美拉达等 25 项）、专属神器与魔法物品（鸦族圣徽/日圣符、太阳剑、血矛等）、施特拉德手记与鬼屋背景。
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "施特拉德"
-  node scripts/lookup.js monster "施特拉德" --brief
-  node scripts/lookup.js item "鸦族圣徽" --brief
-  node scripts/lookup.js item "日圣符" --brief
+  node <SKILL_DIR>/scripts/lookup.js module "施特拉德"
+  node <SKILL_DIR>/scripts/lookup.js monster "施特拉德" --brief
+  node <SKILL_DIR>/scripts/lookup.js item "鸦族圣徽" --brief
+  node <SKILL_DIR>/scripts/lookup.js item "日圣符" --brief
   ```
 
 ### 4. 《深水城：龙金劫》与《博德之门：坠入阿弗纳斯》等其他模组
 - **DM 调取指令：**
   ```bash
-  node scripts/lookup.js module "龙金劫"
-  node scripts/lookup.js module "坠入阿弗纳斯"
-  node scripts/lookup.js module "疯法师"
-  node scripts/lookup.js module "冰风谷"
-  node scripts/lookup.js module "湮灭之墓"
+  node <SKILL_DIR>/scripts/lookup.js module "龙金劫"
+  node <SKILL_DIR>/scripts/lookup.js module "坠入阿弗纳斯"
+  node <SKILL_DIR>/scripts/lookup.js module "疯法师"
+  node <SKILL_DIR>/scripts/lookup.js module "冰风谷"
+  node <SKILL_DIR>/scripts/lookup.js module "湮灭之墓"
   ```

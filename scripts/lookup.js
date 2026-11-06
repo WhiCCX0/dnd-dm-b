@@ -12,15 +12,41 @@
  */
 
 import fs from 'fs';
+import { createRequire } from 'node:module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DatabaseSync } from 'node:sqlite';
+
+const _origEmitWarning = process.emitWarning;
+process.emitWarning = function (warning, ...args) {
+  const msg = typeof warning === 'string' ? warning : (warning && warning.message) || '';
+  const type = typeof args[0] === 'string' ? args[0] : (warning && warning.name) || '';
+  if (type === 'ExperimentalWarning' && /SQLite/i.test(msg)) return;
+  return _origEmitWarning.call(this, warning, ...args);
+};
+const _require = createRequire(import.meta.url);
+let _DatabaseSync = null;
+function getDatabaseSync() {
+  if (!_DatabaseSync) {
+    _DatabaseSync = _require('node:sqlite').DatabaseSync;
+  }
+  return _DatabaseSync;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ROOT_DIR = path.resolve(__dirname, '..');
 
-const dbPath = path.resolve(__dirname, '../references/rules.db');
-const indexFile = path.resolve(__dirname, '../references/topics_index.json');
+function resolveDbPath() {
+  return process.env.DND_DB_PATH
+    ? path.resolve(process.env.DND_DB_PATH)
+    : path.resolve(ROOT_DIR, 'references/rules.db');
+}
+
+function resolveIndexPath() {
+  return process.env.DND_INDEX_PATH
+    ? path.resolve(process.env.DND_INDEX_PATH)
+    : path.resolve(ROOT_DIR, 'references/topics_index.json');
+}
 
 export const VALID_COMMANDS = new Set([
   'monster',
@@ -88,18 +114,28 @@ ${colors.yellow}高频示例:${colors.reset}
 // ----------------------------------------------------
 
 let sqliteDb = null;
+let sqliteDbPath = null;
 const stmtCache = new Map();
 
 function getDb() {
-  if (sqliteDb) return sqliteDb;
-  if (fs.existsSync(dbPath)) {
+  const currentDbPath = resolveDbPath();
+  if (sqliteDb && sqliteDbPath === currentDbPath) return sqliteDb;
+  if (sqliteDb) {
+    try { sqliteDb.close(); } catch (_) {}
+    sqliteDb = null;
+    sqliteDbPath = null;
+    stmtCache.clear();
+  }
+  if (fs.existsSync(currentDbPath)) {
     try {
-      sqliteDb = new DatabaseSync(dbPath, { readOnly: true });
+      const DatabaseSync = getDatabaseSync();
+      sqliteDb = new DatabaseSync(currentDbPath, { readOnly: true });
+      sqliteDbPath = currentDbPath;
       stmtCache.clear();
       return sqliteDb;
     } catch (err) {
       if (process.env.DEBUG) {
-        console.error(`[DB Warning] Failed to initialize SQLite database at ${dbPath}:`, err.message);
+        console.error(`[DB Warning] Failed to initialize SQLite database at ${currentDbPath}:`, err.message);
       }
     }
   }
@@ -889,18 +925,27 @@ function querySqlite(command, query, isBrief, options = {}) {
 // ----------------------------------------------------
 
 let cachedFallbackIndex = null;
+let cachedFallbackPath = null;
 function getFallbackIndex() {
-  if (cachedFallbackIndex) return cachedFallbackIndex;
-  if (!fs.existsSync(indexFile)) return null;
-  cachedFallbackIndex = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+  const currentIndexFile = resolveIndexPath();
+  if (cachedFallbackIndex && cachedFallbackPath === currentIndexFile) return cachedFallbackIndex;
+  if (!fs.existsSync(currentIndexFile)) return null;
+  cachedFallbackIndex = JSON.parse(fs.readFileSync(currentIndexFile, 'utf8'));
+  cachedFallbackPath = currentIndexFile;
   return cachedFallbackIndex;
+}
+
+function getMissingDbGuide() {
+  const setupScript = path.resolve(__dirname, 'setup-db.js');
+  return `未找到规则数据库（references/rules.db）：请运行 "node ${setupScript}" 一键获取（下载 Release 预编译包并校验 SHA-256，或加 "--from-source" 从 5echm_web@c1425c8 本地构建，详见 README.md）。`;
 }
 
 function queryFallback(command, query, isBrief, options = {}) {
   const index = getFallbackIndex();
   if (!index) {
-    if (options.json) return { found: false, error: 'Database and index not found' };
-    console.error(`${colors.red}未找到数据库或索引文件。请先运行 'node scripts/build-db.js'。${colors.reset}`);
+    const guide = getMissingDbGuide();
+    if (options.json) return { found: false, error: guide };
+    console.error(`${colors.red}${guide}${colors.reset}`);
     return null;
   }
 

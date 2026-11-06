@@ -11,7 +11,9 @@ yarn-error.log*
 *.tmp
 *.bak
 
-# SQLite journals & raw source files
+# SQLite database, compiled index, journals & raw source files
+references/rules.db
+references/topics_index.json
 *.db-journal
 *.db-wal
 *.db-shm

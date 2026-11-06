@@ -323,7 +323,9 @@ function main() {
   ].filter(Boolean);
 
   const rulesRoot = candidates.find(p => fs.existsSync(p));
-  const targetJson = path.resolve(__dirname, '../references/topics_index.json');
+  const targetJson = process.env.DND_INDEX_PATH
+    ? path.resolve(process.env.DND_INDEX_PATH)
+    : path.resolve(__dirname, '../references/topics_index.json');
   const isForce = process.argv.includes('--force') || process.argv.includes('-f');
 
   if (!rulesRoot) {
@@ -750,31 +752,32 @@ function main() {
     { title: '哥布林', titleEn: 'Goblin', aliases: ['地精', '哥布林武者', 'Goblin'], url: '怪物图鉴2025/妖精/地精/地精武者.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '地精', titleEn: 'Goblin', aliases: ['哥布林', 'Goblin', '地精武者'], url: '怪物图鉴2025/妖精/地精/地精武者.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '巫妖', titleEn: 'Lich', aliases: ['Lich'], url: '怪物图鉴2025/亡灵/巫妖.htm', anchor: '', category: 'monster', edition: '2024' },
-    { title: '吸血鬼', titleEn: 'Vampire', aliases: ['Vampire', '施特拉德'], url: '怪物图鉴2025/多类型/吸血鬼/吸血鬼.htm', anchor: '', category: 'monster', edition: '2024' },
+    { title: '吸血鬼', titleEn: 'Vampire', aliases: ['Vampire'], url: '怪物图鉴2025/多类型/吸血鬼/吸血鬼.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '眼魔', titleEn: 'Beholder', aliases: ['Beholder', '大眼怪'], url: '怪物图鉴2025/多类型/眼魔/眼魔.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '夺心魔', titleEn: 'Mind Flayer', aliases: ['Mind Flayer', 'Illithid', '灵能食脑者', '章鱼头'], url: '怪物图鉴2025/异怪/夺心魔/夺心魔.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '远古红龙', titleEn: 'Ancient Red Dragon', aliases: ['Red Dragon', '红龙'], url: '怪物图鉴2025/龙类/红龙/远古红龙.htm', anchor: '', category: 'monster', edition: '2024' },
     { title: '黑蜘蛛', titleEn: 'The Black Spider', aliases: ['那兹纳尔', 'Nezznar', '“黑蜘蛛”那兹纳尔'], url: '模组/矿坑/图鉴/黑蜘蛛.htm', anchor: '', category: 'monster', edition: '5e' },
+    { title: '施特拉德·冯·扎洛维奇', titleEn: 'Strahd von Zarovich', aliases: ['施特拉德', 'Strahd', 'Strahd von Zarovich'], url: '模组/施特拉德的诅咒/生物/施特拉德.htm', anchor: '', category: 'monster', edition: '5e' },
 
     // Rules & Actions (2024)
     { title: '武器专精', titleEn: 'Weapon Mastery', aliases: ['武器精通', '精通词条'], url: '玩家手册2024/装备/精通词条.htm', anchor: '', category: 'rule', edition: '2024' },
     { title: '双持', titleEn: 'Two-Weapon Fighting', aliases: ['双武器战斗', '双持武器', '双武器', 'Two-Weapon Fighting'], url: '玩家手册2024/装备/词条.htm', anchor: '轻型', category: 'rule', edition: '2024' },
     { title: '双武器战斗', titleEn: 'Two-Weapon Fighting', aliases: ['双持', '双武器', 'Two-Weapon Fighting'], url: '玩家手册2024/装备/词条.htm', anchor: '轻型', category: 'rule', edition: '2024' },
-    { title: '突袭', titleEn: 'Surprise', aliases: ['惊奇', '偷袭先攻', 'Surprise'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '突袭', category: 'rule', edition: '2024' },
-    { title: '掩护', titleEn: 'Cover', aliases: ['掩体', '半身掩护', '四分之三掩护', '全身掩护', 'Cover'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '掩护', category: 'rule', edition: '2024' },
-    { title: '借机攻击', titleEn: 'Opportunity Attacks', aliases: ['借机', '藉机攻击', 'Opportunity Attack'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '借机攻击', category: 'rule', edition: '2024' },
-    { title: '专注', titleEn: 'Concentration', aliases: ['维持专注', '专注断裂', 'Concentration'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '专注', category: 'rule', edition: '2024' },
-    { title: '英雄激励', titleEn: 'Heroic Inspiration', aliases: ['灵感', '英雄灵感', '激励', '鼓舞', 'Heroic Inspiration'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '英雄激励', category: 'rule', edition: '2024' },
-    { title: '徒手打击', titleEn: 'Unarmed Strike', aliases: ['拳击', '徒手', 'Unarmed Strike'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '徒手打击', category: 'rule', edition: '2024' },
-    { title: '短休', titleEn: 'Short Rest', aliases: ['休息', '短休息'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '短休', category: 'rule', edition: '2024' },
-    { title: '长休', titleEn: 'Long Rest', aliases: ['长休息'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '长休', category: 'rule', edition: '2024' },
-    { title: '死亡豁免', titleEn: 'Death Saving Throw', aliases: ['死亡豁免检定', '濒死', '生死豁免'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: '死亡豁免检定', category: 'rule', edition: '2024' },
+    { title: '突袭', titleEn: 'Surprise', aliases: ['惊奇', '偷袭先攻', 'Surprise'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Surprise', category: 'rule', edition: '2024' },
+    { title: '掩护', titleEn: 'Cover', aliases: ['掩体', '半身掩护', '四分之三掩护', '全身掩护', 'Cover'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Cover', category: 'rule', edition: '2024' },
+    { title: '借机攻击', titleEn: 'Opportunity Attacks', aliases: ['借机', '藉机攻击', 'Opportunity Attack'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Opportunity_Attacks', category: 'rule', edition: '2024' },
+    { title: '专注', titleEn: 'Concentration', aliases: ['维持专注', '专注断裂', 'Concentration'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Concentration', category: 'rule', edition: '2024' },
+    { title: '英雄激励', titleEn: 'Heroic Inspiration', aliases: ['灵感', '英雄灵感', '激励', '鼓舞', 'Heroic Inspiration'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Heroic_Inspiration', category: 'rule', edition: '2024' },
+    { title: '徒手打击', titleEn: 'Unarmed Strike', aliases: ['拳击', '徒手', 'Unarmed Strike'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Unarmed_Strike', category: 'rule', edition: '2024' },
+    { title: '短休', titleEn: 'Short Rest', aliases: ['休息', '短休息'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Short_Rest', category: 'rule', edition: '2024' },
+    { title: '长休', titleEn: 'Long Rest', aliases: ['长休息'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Long_Rest', category: 'rule', edition: '2024' },
+    { title: '死亡豁免', titleEn: 'Death Saving Throw', aliases: ['死亡豁免', '死亡豁免检定', '濒死', '生死豁免'], url: '玩家手册2024/术语汇编/其他术语.htm', anchor: 'Death_Saving_Throw', category: 'rule', edition: '2024' },
 
     // Items & Tools (2024)
     { title: '盗贼工具', titleEn: "Thieves' Tools", aliases: ['开锁', '撬锁工具', '拆陷阱', "Thieves' Tools"], url: '玩家手册2024/装备/其他工具.htm', anchor: '盗贼工具', category: 'item', edition: '2024' },
     { title: '次元袋', titleEn: 'Bag of Holding', aliases: ['储物袋', '空间袋', 'Bag of Holding'], url: '城主指南2024/7.宝藏/魔法物品详述/奇物/其他物品/非普通.htm', anchor: 'Bag_of_Holding', category: 'item', edition: '2024' },
-    { title: '治疗药水', titleEn: 'Potion of Healing', aliases: ['红药水', '血瓶', '生命药水', 'Healing Potion', 'Potions of Healing'], url: '城主指南2024/7.宝藏/魔法物品详述/药水/多种稀有度.htm', anchor: '治疗药水', category: 'item', edition: '2024' },
-    { title: '高等治疗药水', titleEn: 'Potion of Greater Healing', aliases: ['高级治疗药水', '大红', '治疗药水（高等）', 'Greater Healing Potion'], url: '城主指南2024/7.宝藏/魔法物品详述/药水/多种稀有度.htm', anchor: '治疗药水', category: 'item', edition: '2024' },
+    { title: '治疗药水', titleEn: 'Potion of Healing', aliases: ['红药水', '血瓶', '生命药水', 'Healing Potion', 'Potions of Healing', 'Potion of Healing'], url: '城主指南2024/7.宝藏/魔法物品详述/药水/多种稀有度.htm', anchor: 'Potions_of_Healing', category: 'item', edition: '2024' },
+    { title: '高等治疗药水', titleEn: 'Potion of Greater Healing', aliases: ['高级治疗药水', '大红', '治疗药水（高等）', 'Greater Healing Potion'], url: '城主指南2024/7.宝藏/魔法物品详述/药水/多种稀有度.htm', anchor: 'Potions_of_Healing', category: 'item', edition: '2024' },
 
     // Official Modules (5e)
     { title: '凡达林的失落矿坑', titleEn: 'Lost Mine of Phandelver', aliases: ['矿坑', '失落矿坑', 'LMoP'], url: '模组/矿坑/魔法物品.htm', anchor: '', dedupKey: 'module:lmop', category: 'module', edition: '5e' },

@@ -240,8 +240,13 @@ function scopeSingleMonsterMd(cleanMd, title, titleEn) {
   const acLineIndices = [];
   for (let i = 0; i < lines.length; i++) {
     const plain = stripMdFormatting(lines[i]).replace(/^\|?\s*/, '');
-    if (/^(?:AC|护甲等级)\b/i.test(plain)) {
-      acLineIndices.push(i);
+    const startsWithAc = /^(?:AC|护甲等级)\s*[:：]?\s*\d+/i.test(plain);
+    const tableRowHasAc = lines[i].startsWith('|') && /\b(?:AC|护甲等级)\s*[:：]?\s*\d+/i.test(plain);
+    if (startsWithAc || tableRowHasAc) {
+      const nearLines = lines.slice(i, Math.min(lines.length, i + 4)).map(stripMdFormatting).join(' ');
+      if (/\b(?:HP|生命值)\s*[:：]?\s*\d+/i.test(nearLines) || startsWithAc) {
+        acLineIndices.push(i);
+      }
     }
   }
 
@@ -271,7 +276,7 @@ function scopeSingleMonsterMd(cleanMd, title, titleEn) {
 /**
  * Generate high-density, category-tailored --brief summary for Agent consumption
  */
-export function generateBrief(category, title, titleEn, md) {
+export function generateBrief(category, title, titleEn, md, url = '') {
   const name = titleEn ? `${title} (${titleEn})` : title;
   const cleanMd = (md || '').trim();
   if (!cleanMd) return `[${category || 'general'}] ${name}`;
@@ -340,20 +345,24 @@ export function generateBrief(category, title, titleEn, md) {
     return `[法术] ${name}${metaStr ? ' | ' + metaStr : ''} | ${effectSummary.trim()}`;
   }
 
-  // 2. MONSTER: Distinguish statblocks from lore pages; extract AC, HP, Speed, 6 abilities, CR, traits & actions
+  // 2. MONSTER: Distinguish statblocks from lore/preface pages; guarantee 100% action/bonus/reaction/legendary retention (R10)
   if (category === 'monster') {
     const plainAll = stripMdFormatting(cleanMd);
+    const isPrefacePage = /(?:^|\/)前言\//.test(String(url || '').replace(/\\/g, '/'));
     const hasAc = /(?:^|\||\s)(?:AC|护甲等级)\s*[:：]?\s*\d+/i.test(plainAll);
     const hasHp = /(?:^|\||\s)(?:HP|生命值)\s*[:：]?\s*\d+/i.test(plainAll);
 
-    if (!hasAc && !hasHp) {
+    if (isPrefacePage || (!hasAc && !hasHp)) {
       const lore = contentLines.map(stripMdFormatting).filter(Boolean).join(' ').slice(0, 260);
       return `[怪物设定] ${name} | ${lore}`;
     }
 
     const scopedLines = scopeSingleMonsterMd(contentLines, title, titleEn);
-    const summaryParts = [];
+    const headerParts = [];
+    const traitParts = [];
+    const actionParts = [];
     const abilityScores = [];
+    let currentSection = 'header';
 
     for (const line of scopedLines) {
       const plain = stripMdFormatting(line);
@@ -380,16 +389,49 @@ export function generateBrief(category, title, titleEn, md) {
         .trim();
       if (!cleanPart) continue;
 
-      summaryParts.push(cleanPart);
+      if (/^(?:特质|特性)\s*(?:Traits)?$/i.test(cleanPart)) {
+        currentSection = 'traits';
+        traitParts.push(cleanPart);
+        continue;
+      }
+      if (/^(?:动作|附赠动作|反应|传奇动作|巢穴动作|神话动作)\s*(?:Actions|Bonus Actions|Reactions|Legendary Actions|Lair Actions|Mythic Actions)?$/i.test(cleanPart)) {
+        currentSection = 'actions';
+        actionParts.push(cleanPart);
+        continue;
+      }
+
+      if (currentSection === 'header') {
+        headerParts.push(cleanPart);
+      } else if (currentSection === 'traits') {
+        if (cleanPart.length > 200 && !cleanPart.includes('攻击检定')) {
+          traitParts.push(`${cleanPart.slice(0, 200)}…`);
+        } else {
+          traitParts.push(cleanPart);
+        }
+      } else {
+        actionParts.push(cleanPart);
+      }
     }
 
     if (abilityScores.length > 0) {
-      summaryParts.splice(Math.min(3, summaryParts.length), 0, `六维: ${abilityScores.join(' ')}`);
+      headerParts.splice(Math.min(3, headerParts.length), 0, `六维: ${abilityScores.join(' ')}`);
     }
 
-    const joined = (summaryParts.length > 0 ? summaryParts : scopedLines.map(stripMdFormatting))
-      .join(' | ')
-      .slice(0, 480);
+    // Guarantee priority: full header + all actions/bonus/reactions/legendary (untruncated) + capped traits
+    const summaryParts = [...headerParts, ...traitParts, ...actionParts];
+    let joined = (summaryParts.length > 0 ? summaryParts : scopedLines.map(stripMdFormatting)).join(' | ');
+
+    // Safety net: if any line outside scopedLines had '攻击检定' (e.g. variant/summon sub-block on same entry), append it so zero attack lines are ever lost
+    const countAtk = s => (s.match(/攻击检定/g) || []).length;
+    if (countAtk(joined) < countAtk(cleanMd)) {
+      const extraAtkLines = contentLines
+        .map(stripMdFormatting)
+        .filter(l => l.includes('攻击检定') && !joined.includes(l));
+      if (extraAtkLines.length > 0) {
+        joined += ` | ${extraAtkLines.join(' | ')}`;
+      }
+    }
+
     return `[怪物] ${name} | ${joined}`;
   }
 
@@ -447,6 +489,244 @@ export function readHtmlSmart(fullPath) {
   }
 }
 
+function normalizeForSimilarity(md) {
+  return String(md || '')
+    .replace(/\s+/g, '')
+    .replace(/[*#|`~_\-—:：,，.。;；!！?？()（）[\]【】'"“”‘’]/g, '')
+    .toLowerCase();
+}
+
+function charBigrams(normStr) {
+  const s = normStr.slice(0, 3000);
+  const set = new Set();
+  for (let i = 0; i < s.length - 1; i++) {
+    set.add(s.slice(i, i + 2));
+  }
+  return set;
+}
+
+function computeSimilarity(normA, normB) {
+  if (normA === normB) return 1;
+  if (!normA || !normB) return 0;
+  const setA = charBigrams(normA);
+  const setB = charBigrams(normB);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let inter = 0;
+  for (const bg of setA) {
+    if (setB.has(bg)) inter++;
+  }
+  const union = setA.size + setB.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+function isGenericRarityContainer(entry) {
+  const u = String(entry.url || '').replace(/\\/g, '/');
+  return !entry.anchor && /(?:^|\/)(?:普通|非普通|珍稀|极珍稀|传说|神器|多种稀有度)\.htm$/.test(u);
+}
+
+function scoreSourcePriority(entry) {
+  const u = String(entry.url || '').replace(/\\/g, '/');
+  if (isGenericRarityContainer(entry)) return 10;
+  if (u.startsWith('第三方/')) return 15;
+  if (/总\.htm$/i.test(u) || String(entry.briefMd || '').startsWith('[怪物设定]')) return 20;
+  if (u.startsWith('模组/')) return 30;
+  if (u.startsWith('贤者谏言') || u.startsWith('速查/')) return 40;
+
+  if (entry.edition === '2024') {
+    if (/^玩家手册2024\/(?:角色职业|法术详述|角色起源|专长|进行游戏)\//.test(u)) return 96;
+    if (/^城主指南2024\/7\.宝藏\/魔法物品详述\//.test(u) && entry.anchor) return 95;
+    if (/^怪物图鉴2025\//.test(u)) return 92;
+    if (/^城主指南2024\//.test(u)) return 82;
+    if (/^玩家手册2024\/装备\//.test(u)) return 75;
+    if (/^玩家手册2024\/术语汇编\//.test(u)) return 68;
+    return 70;
+  }
+
+  if (/^(?:玩家手册|城主指南|怪物图鉴)\//.test(u)) return 92;
+  if (u.startsWith('多元宇宙的怪物/')) return 86;
+  if (u.startsWith('塔莎的万事坩埚/') || u.startsWith('珊娜萨的万事指南/')) return 82;
+  if (u.startsWith('魔邓肯的众敌卷册/') || u.startsWith('瓦罗怪物指南/') || u.startsWith('费资本的巨龙宝库/')) return 76;
+  return 60;
+}
+
+function deriveSourceLabels(entry) {
+  const u = String(entry.url || '').replace(/\\/g, '/');
+  const parts = u.split('/').filter(Boolean);
+  const fileBase = parts.length > 0 ? path.basename(parts.at(-1), path.extname(parts.at(-1))) : '';
+  const parent = parts.length >= 2 ? parts.at(-2) : '';
+  const grandParent = parts.length >= 3 ? parts.at(-3) : '';
+  const book = parts[0] || '未知来源';
+  const cleanBook = book.replace(/^\d+\./, '').trim();
+  const cleanParent = parent.replace(/^\d+\./, '').trim();
+  const cleanGrand = grandParent.replace(/^\d+\./, '').trim();
+
+  const candidates = [];
+
+  if (u.startsWith('玩家手册2024/术语汇编/')) {
+    candidates.push('术语汇编', `玩家手册·${fileBase}`);
+  } else if (u.startsWith('玩家手册2024/装备/')) {
+    candidates.push(`玩家手册·${fileBase}`, `装备·${fileBase}`);
+  } else if (u.startsWith('城主指南2024/7.宝藏/魔法物品详述/')) {
+    const subType = parts.slice(3, -1).join('·') || cleanParent;
+    candidates.push(`魔法物品·${subType}`, `城主指南·${subType}·${fileBase}`);
+  } else if (u.startsWith('城主指南2024/')) {
+    candidates.push(
+      cleanParent && cleanParent !== '城主指南2024' ? `城主指南·${cleanParent}` : '城主指南',
+      `城主指南·${cleanGrand || cleanParent}·${fileBase}`
+    );
+  } else if (u.startsWith('怪物图鉴2025/')) {
+    if (/总\.htm$/i.test(u)) {
+      candidates.push('怪物概述', '怪物图鉴·概述');
+    } else {
+      candidates.push('怪物图鉴', `怪物图鉴·${cleanParent}`);
+    }
+  } else if (u.startsWith('贤者谏言')) {
+    candidates.push('贤者谏言', `${cleanBook}·${fileBase}`);
+  } else if (u.startsWith('模组/')) {
+    const modName = parts[1] || '模组';
+    if (fileBase && fileBase !== entry.title) {
+      candidates.push(`模组·${modName}·${fileBase}`, `模组·${modName}`);
+    } else {
+      candidates.push(`模组·${modName}`, `模组·${modName}·${cleanParent}`);
+    }
+  } else if (u.startsWith('第三方/')) {
+    const thirdBook = parts[1] || '第三方';
+    const sub = parts[2] ? `·${parts[2]}` : '';
+    candidates.push(`${thirdBook}`, `${thirdBook}${sub}·${fileBase}`);
+  } else {
+    if (cleanParent && cleanParent !== cleanBook && cleanParent !== entry.title) {
+      candidates.push(cleanBook, `${cleanBook}·${cleanParent}`, `${cleanBook}·${cleanParent}·${fileBase}`);
+    } else if (fileBase && fileBase !== entry.title) {
+      candidates.push(cleanBook, `${cleanBook}·${fileBase}`);
+    } else {
+      candidates.push(cleanBook, `${cleanBook}·${cleanGrand || cleanParent || fileBase}`);
+    }
+  }
+
+  if (entry.anchor && entry.anchor !== entry.title) {
+    candidates.push(`${candidates[0] || cleanBook}·${entry.anchor}`);
+  }
+  candidates.push(`${candidates[0] || cleanBook}·#${entry.id}`);
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function deduplicateAndDisambiguateEntries(prepared) {
+  const groups = new Map();
+  for (const entry of prepared) {
+    const key = `${entry.edition}::${entry.title.trim().toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  }
+
+  let mergedCount = 0;
+  let disambiguatedCount = 0;
+  const stage1Groups = [];
+
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      stage1Groups.push({ allContainers: false, kept: group });
+      continue;
+    }
+
+    group.sort((a, b) => {
+      const diff = scoreSourcePriority(b) - scoreSourcePriority(a);
+      return diff !== 0 ? diff : a.id - b.id;
+    });
+
+    const kept = [];
+    const keptNorms = [];
+
+    for (const cand of group) {
+      const candNorm = normalizeForSimilarity(cand.contentMd);
+      let matchedIdx = -1;
+      for (let i = 0; i < kept.length; i++) {
+        const sim = computeSimilarity(keptNorms[i], candNorm);
+        if (sim >= 0.68) {
+          matchedIdx = i;
+          break;
+        }
+      }
+
+      if (matchedIdx !== -1) {
+        const primary = kept[matchedIdx];
+        if (!primary.titleEn && cand.titleEn) {
+          primary.titleEn = cand.titleEn;
+        }
+        const mergedSet = new Set(primary.aliases || []);
+        if (cand.titleEn && cand.titleEn !== primary.title) mergedSet.add(cand.titleEn);
+        for (const al of cand.aliases || []) {
+          if (al && al !== primary.title) mergedSet.add(al);
+        }
+        primary.aliases = [...mergedSet];
+        primary.briefMd = generateBrief(primary.category, primary.title, primary.titleEn, primary.contentMd, primary.url);
+        mergedCount++;
+      } else {
+        kept.push(cand);
+        keptNorms.push(candNorm);
+      }
+    }
+
+    const allContainers = kept.length > 1 && kept.every(isGenericRarityContainer);
+    stage1Groups.push({ allContainers, kept });
+  }
+
+  // Reserve all unique/primary titles first so disambiguated titles never collide with existing titles
+  const usedEditionTitles = new Set();
+  for (const { allContainers, kept } of stage1Groups) {
+    if (!allContainers && kept.length >= 1) {
+      usedEditionTitles.add(`${kept[0].edition}::${kept[0].title.trim().toLowerCase()}`);
+    }
+  }
+
+  const finalEntries = [];
+  for (const { allContainers, kept } of stage1Groups) {
+    if (kept.length === 1) {
+      finalEntries.push(kept[0]);
+      continue;
+    }
+
+    const startDisambigIdx = allContainers ? 0 : 1;
+    if (!allContainers) {
+      finalEntries.push(kept[0]);
+    }
+
+    for (let i = startDisambigIdx; i < kept.length; i++) {
+      const sec = kept[i];
+      const origTitle = sec.title;
+      const labels = deriveSourceLabels(sec);
+      let chosenTitle = `${origTitle}（#${sec.id}）`;
+      for (const lbl of labels) {
+        const candidateTitle = `${origTitle}（${lbl}）`;
+        const candKey = `${sec.edition}::${candidateTitle.trim().toLowerCase()}`;
+        if (!usedEditionTitles.has(candKey)) {
+          chosenTitle = candidateTitle;
+          usedEditionTitles.add(candKey);
+          break;
+        }
+      }
+      usedEditionTitles.add(`${sec.edition}::${chosenTitle.trim().toLowerCase()}`);
+
+      // Preserve bare title in aliases when category differs from kept[0] so category-scoped queries (e.g. monster 刺客) still exact-match
+      const aliasSet = new Set(sec.aliases || []);
+      if (allContainers || sec.category !== kept[0].category) {
+        aliasSet.add(origTitle);
+      } else {
+        aliasSet.delete(origTitle);
+      }
+      aliasSet.delete(chosenTitle);
+
+      sec.title = chosenTitle;
+      sec.aliases = [...aliasSet];
+      sec.briefMd = generateBrief(sec.category, sec.title, sec.titleEn, sec.contentMd, sec.url);
+      disambiguatedCount++;
+      finalEntries.push(sec);
+    }
+  }
+
+  finalEntries.sort((a, b) => a.id - b.id);
+  return { finalEntries, mergedCount, disambiguatedCount };
+}
+
 function main() {
   const candidates = [
     process.env.RULES_SOURCE_DIR,
@@ -456,8 +736,12 @@ function main() {
   ].filter(Boolean);
 
   const rulesRoot = candidates.find(p => fs.existsSync(p));
-  const dbPath = path.resolve(__dirname, '../references/rules.db');
-  const indexFile = path.resolve(__dirname, '../references/topics_index.json');
+  const dbPath = process.env.DND_DB_PATH
+    ? path.resolve(process.env.DND_DB_PATH)
+    : path.resolve(__dirname, '../references/rules.db');
+  const indexFile = process.env.DND_INDEX_PATH
+    ? path.resolve(process.env.DND_INDEX_PATH)
+    : path.resolve(__dirname, '../references/topics_index.json');
   const isForce = process.argv.includes('--force') || process.argv.includes('-f');
 
   if (!rulesRoot) {
@@ -465,10 +749,10 @@ function main() {
       const stat = fs.statSync(dbPath);
       console.log(`\x1b[33m🛡️ [DB 构建保护锁]\x1b[0m 未检测到 rules_source 原始 HTML 目录。`);
       console.log(`现有的预编译数据库 \x1b[32m${dbPath}\x1b[0m (${(stat.size / (1024 * 1024)).toFixed(1)} MB) 完好无损，已受写保护。`);
-      console.log(`如需重新从 HTML 构建，请挂载 rules_source 目录并使用 --force 运行。`);
+      console.log(`如需重新从 HTML 构建，请运行 node scripts/setup-db.js --from-source --force。`);
       process.exit(0);
     } else {
-      console.error('\x1b[31mError: rules_source directory not found in candidates:\x1b[0m', candidates);
+      console.error(`未找到规则数据源目录。请运行 "node ${path.resolve(__dirname, 'setup-db.js')}" 一键获取或构建数据库。`);
       process.exit(1);
     }
   }
@@ -542,7 +826,61 @@ function main() {
     `);
 
     const rawIndex = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-    console.log(`Processing ${rawIndex.length} topics from topics_index.json...`);
+    console.log(`Extracting Markdown & briefs for ${rawIndex.length} topics from topics_index.json...`);
+
+    const preparedEntries = [];
+    for (const item of rawIndex) {
+      let contentMd = '';
+      let briefMd = '';
+
+      if (item.url) {
+        const rawHtml = readTopicHtml(item.url);
+        if (rawHtml) {
+          let targetHtml = rawHtml;
+          if (item.anchor) {
+            const sub = extractSubSection(rawHtml, item.anchor);
+            if (sub) targetHtml = sub;
+          }
+          contentMd = htmlToMarkdown(targetHtml);
+          if (!contentMd) {
+            contentMd = `[${item.category || 'general'}] ${item.title}`;
+          }
+          // Container index pages whose individual child entries are already sliced keep an explicit notice (R8)
+          const isSlicedContainer = !item.anchor && (
+            /^玩家手册2024\/法术详述\/\d环\.htm$/.test(item.url) ||
+            /^城主指南2024\/7\.宝藏\/魔法物品详述\//.test(item.url) ||
+            /^玩家手册2024\/专长\/(?:起源|通用|战斗风格|传奇恩惠)专长\.htm$/.test(item.url) ||
+            /^速查\/.*大全/.test(item.url)
+          );
+          if (isSlicedContainer && contentMd.length > 2500) {
+            contentMd = `${contentMd.slice(0, 2500)}\n\n... [本章各独立词条已全部拆分为单体条目索引，请直接按名称检索具体法术/物品/专长]`;
+          }
+          briefMd = generateBrief(item.category, item.title, item.titleEn, contentMd, item.url);
+        }
+      }
+
+      if (!contentMd && !briefMd) {
+        briefMd = `[${item.category || 'general'}] ${item.title}`;
+        contentMd = briefMd;
+      }
+
+      preparedEntries.push({
+        id: item.id,
+        category: item.category || 'general',
+        title: item.title,
+        titleEn: item.titleEn || '',
+        aliases: Array.isArray(item.aliases) ? [...item.aliases] : [],
+        url: item.url || '',
+        anchor: item.anchor || '',
+        level: item.level || 0,
+        edition: item.edition || '5e',
+        contentMd,
+        briefMd
+      });
+    }
+
+    const { finalEntries, mergedCount, disambiguatedCount } = deduplicateAndDisambiguateEntries(preparedEntries);
+    console.log(`R11 deduplication complete: merged ${mergedCount} duplicate entries, disambiguated ${disambiguatedCount} distinct same-title entries -> ${finalEntries.length} final entries.`);
 
     const insertEntry = db.prepare(`
       INSERT INTO entries (id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md)
@@ -561,79 +899,34 @@ function main() {
     db.exec('BEGIN TRANSACTION');
 
     let count = 0;
-    for (const item of rawIndex) {
-      let contentMd = '';
-      let briefMd = '';
-
-      if (item.url) {
-        const rawHtml = readTopicHtml(item.url);
-        if (rawHtml) {
-          let targetHtml = rawHtml;
-          if (item.anchor) {
-            const sub = extractSubSection(rawHtml, item.anchor);
-            if (sub) targetHtml = sub;
-          }
-          contentMd = htmlToMarkdown(targetHtml);
-          if (!contentMd) {
-            contentMd = `[${item.category || 'general'}] ${item.title}`;
-          }
-          // Avoid storing duplicate 50KB+ full text on container index pages whose children are already sliced
-          const isSlicedContainer = !item.anchor && (
-            /^玩家手册2024\/法术详述\/\d环\.htm$/.test(item.url) ||
-            /^城主指南2024\/7\.宝藏\/魔法物品详述\//.test(item.url) ||
-            /^玩家手册2024\/专长\/(?:起源|通用|战斗风格|传奇恩惠)专长\.htm$/.test(item.url) ||
-            /^速查\/.*大全/.test(item.url)
-          );
-          if (isSlicedContainer && contentMd.length > 2500) {
-            contentMd = `${contentMd.slice(0, 2500)}\n\n... [本章各独立词条已全部拆分为单体条目索引，请直接按名称检索具体法术/物品/专长]`;
-          } else if (!item.anchor && contentMd.length > 10000 && item.category !== 'monster' && item.edition !== '2024') {
-            contentMd = contentMd.slice(0, 10000);
-          }
-          briefMd = generateBrief(item.category, item.title, item.titleEn, contentMd);
-        }
-      }
-
-      if (!contentMd && !briefMd) {
-        briefMd = `[${item.category || 'general'}] ${item.title}`;
-        contentMd = briefMd;
-      }
-
+    for (const item of finalEntries) {
       const aliasesStr = (item.aliases || []).join(', ');
-
-      // For FTS5 trigram index: strip markdown table dividers/asterisks and cap long pages
-      // so the database stays ~85 MB (well below GitHub's 100 MB file limit) while 100% of core entries are indexed in full
-      const ftsCap = item.edition === '2024' ? 2400 : 1600;
-      const ftsText = contentMd
-        .replace(/\|\s*---\s*(?:\|\s*---\s*)*\|/g, ' ')
-        .replace(/[*#|`~]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, ftsCap);
 
       insertEntry.run(
         item.id,
-        item.category || 'general',
+        item.category,
         item.title,
-        item.titleEn || '',
+        item.titleEn,
         aliasesStr,
-        item.url || '',
-        item.anchor || '',
-        item.edition || '5e',
-        contentMd,
-        briefMd
+        item.url,
+        item.anchor,
+        item.edition,
+        item.contentMd,
+        item.briefMd
       );
 
+      // R9: Full-text FTS5 trigram indexing over the entire content_md without character cap
       insertFts.run(
         item.id,
         item.title,
-        item.titleEn || '',
+        item.titleEn,
         aliasesStr,
-        ftsText
+        item.contentMd
       );
 
       count++;
       if (count % 2000 === 0) {
-        console.log(`Indexed ${count}/${rawIndex.length} entries...`);
+        console.log(`Indexed ${count}/${finalEntries.length} entries...`);
       }
     }
 
@@ -650,6 +943,22 @@ function main() {
     db.exec('ANALYZE');
     db.exec('VACUUM');
     db.close();
+
+    // Sync deduplicated & disambiguated metadata back to topics_index.json so fallback stays 100% aligned
+    const syncedIndex = finalEntries.map(e => ({
+      id: e.id,
+      title: e.title,
+      titleEn: e.titleEn,
+      aliases: e.aliases,
+      url: e.url,
+      anchor: e.anchor,
+      level: e.level,
+      category: e.category,
+      edition: e.edition
+    }));
+    const tmpIdxPath = `${indexFile}.${process.pid}.sync.tmp`;
+    fs.writeFileSync(tmpIdxPath, JSON.stringify(syncedIndex, null, 2), 'utf8');
+    fs.renameSync(tmpIdxPath, indexFile);
 
     // Atomically replace target DB only after complete success
     fs.renameSync(tmpDbPath, dbPath);

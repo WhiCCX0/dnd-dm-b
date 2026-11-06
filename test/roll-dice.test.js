@@ -141,12 +141,53 @@ test('roll - 攻击检定模式 (--attack / --ac)：自然 20 无视 AC 必中�
   assert.ok(sawNat1AutoMiss, '批量采样中应验证到自然 1 自动失手');
 });
 
-test('roll - CLI 暗骰 (--hidden) 仅输出纯数字不泄露 DC/标签且非 TTY 无 ANSI 转义码', () => {
-  const hiddenOut = execFileSync(process.execPath, [ROLL_SCRIPT, '1d20+6', '--dc', '15', '--label', 'Goblin Stealth', '--hidden'], {
-    encoding: 'utf-8'
-  });
-  assert.match(hiddenOut, /^\d+\r?\n$/, '--hidden 应仅输出纯数字结果');
-  assert.ok(!hiddenOut.includes('DC') && !hiddenOut.includes('Goblin'), '--hidden 严禁泄露 DC 或标签');
+test('roll (R2 & R12.4) - 可注入随机函数/环境变量与暗骰 (--hidden) 判定输出（含命中/未中/天然20/1，不含标签）', () => {
+  // 1. 编程接口注入 rng 函数稳定复现天然 20、天然 1、命中、未命中
+  const nat20Atk = roll('1d20+5', { attack: true, ac: 99, rng: () => 0.99 }); // d20 = 20 -> total 25
+  assert.equal(nat20Atk.rolls[0], 20);
+  assert.equal(nat20Atk.autoHit, true);
+
+  const nat1Atk = roll('1d20+50', { attack: true, ac: 5, rng: () => 0.0 }); // d20 = 1 -> total 51
+  assert.equal(nat1Atk.rolls[0], 1);
+  assert.equal(nat1Atk.autoMiss, true);
+
+  // 2. CLI --hidden 四种攻击结果：天然 20、天然 1、普通命中、普通未命中（均不得包含标签或 AC 数字）
+  const runHidden = (args, rngVal) =>
+    execFileSync(process.execPath, [ROLL_SCRIPT, ...args], {
+      encoding: 'utf-8',
+      env: { ...process.env, DND_RNG_VALUES: String(rngVal) }
+    }).trim();
+
+  const hCrit = runHidden(['1d20', '--attack', '--ac', '15', '--label', 'Goblin Boss', '--hidden'], '0.99');
+  assert.equal(hCrit, '20 CRIT');
+  assert.ok(!hCrit.includes('Goblin') && !hCrit.includes('15'));
+
+  const hAutoMiss = runHidden(['1d20', '--attack', '--ac', '15', '--label', 'Goblin Boss', '--hidden'], '0.0');
+  assert.equal(hAutoMiss, '1 AUTO-MISS');
+  assert.ok(!hAutoMiss.includes('Goblin'));
+
+  const hHit = runHidden(['1d20+5', '--attack', '--ac', '15', '--label', 'Goblin Boss', '--hidden'], '0.55'); // d20=12, +5=17
+  assert.equal(hHit, '17 HIT');
+  assert.ok(!hHit.includes('Goblin'));
+
+  const hMiss = runHidden(['1d20+5', '--attack', '--ac', '15', '--label', 'Goblin Boss', '--hidden'], '0.25'); // d20=6, +5=11
+  assert.equal(hMiss, '11 MISS');
+  assert.ok(!hMiss.includes('Goblin'));
+
+  // 3. CLI --hidden 检定 DC 模式与无 DC/AC 天然 20/1 标记
+  const hFail = runHidden(['1d20+2', '--dc', '15', '--label', 'Goblin Stealth', '--hidden'], '0.3'); // d20=7, +2=9
+  assert.equal(hFail, '9 FAIL');
+  assert.ok(!hFail.includes('Goblin') && !hFail.includes('DC'));
+
+  const hPass = runHidden(['1d20+6', '--dc', '15', '--label', 'Goblin Stealth', '--hidden'], '0.55'); // d20=12, +6=18
+  assert.equal(hPass, '18 PASS');
+
+  const hBareNat20 = runHidden(['1d20+4', '--label', 'Secret Perception', '--hidden'], '0.99'); // d20=20, +4=24
+  assert.equal(hBareNat20, '24 NAT20');
+  assert.ok(!hBareNat20.includes('Secret'));
+
+  const hBareNat1 = runHidden(['1d20+4', '--label', 'Secret Perception', '--hidden'], '0.0'); // d20=1, +4=5
+  assert.equal(hBareNat1, '5 NAT1');
 
   const normalOut = execFileSync(process.execPath, [ROLL_SCRIPT, '1d20+4', '--dc=12', '--label=Check'], {
     encoding: 'utf-8'

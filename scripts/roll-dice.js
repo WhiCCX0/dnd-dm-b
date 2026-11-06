@@ -44,8 +44,39 @@ const colors = {
   red: useColor ? '\x1b[31m' : '',
 };
 
-function rollDie(sides) {
-  return Math.floor(Math.random() * sides) + 1;
+export function createRng(explicitRng) {
+  if (typeof explicitRng === 'function') {
+    return explicitRng;
+  }
+  if (process.env.DND_RNG_VALUES !== undefined && process.env.DND_RNG_VALUES !== '') {
+    const seq = String(process.env.DND_RNG_VALUES)
+      .split(',')
+      .map(s => Number(s.trim()))
+      .filter(n => Number.isFinite(n) && n >= 0 && n < 1);
+    let idx = 0;
+    return () => (idx < seq.length ? seq[idx++] : Math.random());
+  }
+  if (process.env.DND_RNG_SEED !== undefined && process.env.DND_RNG_SEED !== '') {
+    let seed = 0;
+    const str = String(process.env.DND_RNG_SEED);
+    for (let i = 0; i < str.length; i++) {
+      seed = (Math.imul(31, seed) + str.charCodeAt(i)) | 0;
+    }
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  return Math.random;
+}
+
+function rollDie(sides, rng = Math.random) {
+  const u = rng();
+  const clamped = u >= 1 ? 0.999999999 : (u < 0 ? 0 : u);
+  return Math.floor(clamped * sides) + 1;
 }
 
 function validateDc(rawDc, label = 'DC') {
@@ -96,7 +127,7 @@ ${colors.yellow}Options:${colors.reset}
   --attack              Attack roll mode (Nat 20 always hits, Nat 1 always misses)
   --ac <number>         Target AC for attack rolls (enables --attack mode)
   --dc <number>         Evaluate against target DC (Success / Failure)
-  --hidden              Output ONLY the final total number (for secret DM rolls)
+  --hidden              Output single-line total + verdict (HIT/CRIT/FAIL/NAT20/NAT1) without label
   --batch <count>       Roll the expression multiple times (1..100)
   --json, -j            Output result as JSON
   --help, -h            Show this help message
@@ -321,6 +352,7 @@ function evaluateRollOutcome(result, options = {}) {
 function executeSingleRoll(expr, options = {}) {
   const parsed = parseDiceExpression(expr);
   const hasAdvOrDis = Boolean(options.advantage || options.disadvantage);
+  const rng = typeof options.rng === 'function' ? options.rng : createRng();
 
   // 1. Keep-highest / Keep-lowest syntax (4d6kh3 / 4d6kl3)
   if (parsed.type === 'kh' || parsed.type === 'kl') {
@@ -333,7 +365,7 @@ function executeSingleRoll(expr, options = {}) {
       keepCount *= 2;
     }
     const rolls = [];
-    for (let i = 0; i < numDice; i++) rolls.push(rollDie(sides));
+    for (let i = 0; i < numDice; i++) rolls.push(rollDie(sides, rng));
     const sorted = [...rolls].sort((a, b) => (parsed.type === 'kl' ? a - b : b - a));
     const kept = sorted.slice(0, keepCount);
     const total = kept.reduce((a, b) => a + b, 0) + mod;
@@ -372,8 +404,8 @@ function executeSingleRoll(expr, options = {}) {
 
     // Handle advantage / disadvantage on 1d20
     if (sides === 20 && hasAdvOrDis) {
-      const r1 = rollDie(20);
-      const r2 = rollDie(20);
+      const r1 = rollDie(20, rng);
+      const r2 = rollDie(20, rng);
       let chosen;
       let modeTag;
       if (options.advantage && options.disadvantage) {
@@ -407,7 +439,7 @@ function executeSingleRoll(expr, options = {}) {
     const rolls = [];
     let sum = 0;
     for (let i = 0; i < numDice; i++) {
-      const r = rollDie(sides);
+      const r = rollDie(sides, rng);
       rolls.push(r);
       sum += r;
     }
@@ -447,8 +479,8 @@ function executeSingleRoll(expr, options = {}) {
       }
 
       if (term.sides === 20 && numDice === 1 && hasAdvOrDis) {
-        const r1 = rollDie(20);
-        const r2 = rollDie(20);
+        const r1 = rollDie(20, rng);
+        const r2 = rollDie(20, rng);
         let chosen;
         if (options.advantage && options.disadvantage) chosen = r1;
         else if (options.advantage) chosen = Math.max(r1, r2);
@@ -469,7 +501,7 @@ function executeSingleRoll(expr, options = {}) {
         const rolls = [];
         let sum = 0;
         for (let i = 0; i < numDice; i++) {
-          const r = rollDie(term.sides);
+          const r = rollDie(term.sides, rng);
           rolls.push(r);
           allRolls.push(r);
           sum += r;
@@ -501,6 +533,26 @@ function executeSingleRoll(expr, options = {}) {
   }, options);
 }
 
+export function formatHiddenRoll(result) {
+  if (result.attack) {
+    if (result.autoHit) return `${result.total} CRIT`;
+    if (result.autoMiss) return `${result.total} AUTO-MISS`;
+    if (result.hit === true) return `${result.total} HIT`;
+    if (result.hit === false) return `${result.total} MISS`;
+    return `${result.total}`;
+  }
+  if (result.dc !== undefined && result.dc !== null) {
+    const verdict = result.success ? 'PASS' : 'FAIL';
+    const natTag = result.d20Special === 'NATURAL 20!'
+      ? ' NAT20'
+      : (result.d20Special === 'NATURAL 1!' ? ' NAT1' : '');
+    return `${result.total} ${verdict}${natTag}`;
+  }
+  if (result.d20Special === 'NATURAL 20!') return `${result.total} NAT20`;
+  if (result.d20Special === 'NATURAL 1!') return `${result.total} NAT1`;
+  return `${result.total}`;
+}
+
 function main() {
   const args = process.argv.slice(2);
   let parsed;
@@ -526,8 +578,8 @@ function main() {
     const results = batchResult.results || [batchResult];
     for (const result of results) {
       if (parsed.hidden) {
-        // In hidden mode, output ONLY the bare total number without leaking DC or labels
-        console.log(`${result.total}`);
+        // In hidden mode, output single-line total + verdict/nat20/1 without leaking label or target DC/AC
+        console.log(formatHiddenRoll(result));
         continue;
       }
 
@@ -597,6 +649,7 @@ export function roll(expr, options = {}) {
   const dcVal = validateDc(options.dc, 'DC');
   const acVal = validateDc(options.ac, 'AC');
   const batchVal = validateBatch(options.batch);
+  const rng = createRng(options.rng);
   const parsedOpts = {
     expr,
     advantage: Boolean(options.advantage || options.adv),
@@ -607,7 +660,8 @@ export function roll(expr, options = {}) {
     dc: dcVal,
     hidden: Boolean(options.hidden),
     label: options.label || '',
-    batch: batchVal
+    batch: batchVal,
+    rng
   };
 
   const results = [];

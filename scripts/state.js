@@ -16,8 +16,10 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRng } from './roll-dice.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,8 +151,17 @@ export function loadPresets() {
   return JSON.parse(fs.readFileSync(PRESETS_PATH, 'utf-8'));
 }
 
+export function getDefaultUserSessionsDir() {
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    return path.join(appData, 'dnd-dm-b', 'sessions');
+  }
+  const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+  return path.join(dataHome, 'dnd-dm-b', 'sessions');
+}
+
 export function getSessionsDir() {
-  return process.env.DND_SESSIONS_DIR || process.env.SESSIONS_DIR || path.resolve(ROOT_DIR, 'sessions');
+  return process.env.DND_SESSIONS_DIR || process.env.SESSIONS_DIR || getDefaultUserSessionsDir();
 }
 
 export function parseIntStrict(value, fieldName = '数值', { min = -100000000, max = 100000000 } = {}) {
@@ -207,7 +218,24 @@ export function getSessionPath(campaignName) {
   if (!safeName || /^_+$/.test(safeName)) {
     throw new Error(`无效的战役名称: "${campaignName}"`);
   }
-  return path.join(getSessionsDir(), safeName, 'state.json');
+
+  const explicitEnvDir = process.env.DND_SESSIONS_DIR || process.env.SESSIONS_DIR;
+  if (explicitEnvDir) {
+    return path.join(explicitEnvDir, safeName, 'state.json');
+  }
+
+  const userDir = getDefaultUserSessionsDir();
+  const userPath = path.join(userDir, safeName, 'state.json');
+  const legacyPath = path.join(path.resolve(ROOT_DIR, 'sessions'), safeName, 'state.json');
+
+  if (fs.existsSync(legacyPath) && !fs.existsSync(userPath)) {
+    console.warn(
+      `[提示] 检测到旧位置存档 (${legacyPath})，当前继续读取旧位置；可将存档目录迁移至 ${path.join(userDir, safeName)} 以免更新技能时受影响。`
+    );
+    return legacyPath;
+  }
+
+  return userPath;
 }
 
 function parseSlots(str) {
@@ -412,11 +440,11 @@ function syncHpConditionsForMember(state, member, logs = []) {
 
   // Unconscious check & Death Save reset on heal
   const unconsciousIdx = conditions.indexOf('昏迷');
-  const stableIdx = conditions.indexOf('稳定');
   if (hp.current === 0) {
     if (conditions.includes('死亡')) {
       if (unconsciousIdx !== -1) conditions.splice(unconsciousIdx, 1);
-      if (stableIdx !== -1) conditions.splice(state.status.conditions.indexOf('稳定'), 1);
+      const stableIdx = conditions.indexOf('稳定');
+      if (stableIdx !== -1) conditions.splice(stableIdx, 1);
     } else if (unconsciousIdx === -1) {
       conditions.push('昏迷');
       logs.push('生命值归零，陷入【昏迷】并需进行死亡豁免');
@@ -433,10 +461,6 @@ function syncHpConditionsForMember(state, member, logs = []) {
     const sIdx = conditions.indexOf('稳定');
     if (sIdx !== -1) {
       conditions.splice(sIdx, 1);
-    }
-    const deadIdx = conditions.indexOf('死亡');
-    if (deadIdx !== -1) {
-      conditions.splice(deadIdx, 1);
     }
     member.deathSaves = { successes: 0, failures: 0 };
   }
@@ -592,6 +616,7 @@ export function defaultState(campaignName, options = {}) {
       inCombat: false,
       turnIndex: 0,
       activeTurn: null,
+      activeTurnId: null,
       encounter: {
         active: false,
         mobs: []
@@ -812,9 +837,9 @@ export function updateState(campaignName, updates = {}) {
           }
         }
 
-        // Concentration check if still conscious and concentrating
-        if (unabsorbed > 0 && hp.current > 0 && member.concentration) {
-          const concDc = Math.min(30, Math.max(10, Math.floor(unabsorbed / 2)));
+        // Concentration check if still conscious and concentrating (includes damage absorbed by Temp HP)
+        if (damage > 0 && hp.current > 0 && member.concentration) {
+          const concDc = Math.min(30, Math.max(10, Math.floor(damage / 2)));
           member.concentrationCheckDc = concDc;
           logs.push(`${whoPrefix}⚠️ 专注检定提示: 需进行 DC ${concDc} 体质豁免以维持【${member.concentration}】`);
         }
@@ -875,6 +900,12 @@ export function updateState(campaignName, updates = {}) {
 
   // 4. Death Saves manual tracking
   if (updates.deathSave !== undefined) {
+    if (conditions.includes('死亡')) {
+      throw new Error(`角色【${member.name}】已死亡，无法执行死亡豁免（需先使用 --revive 复活）`);
+    }
+    if (member.hp.current > 0) {
+      throw new Error(`角色【${member.name}】当前生命值大于 0 (HP ${member.hp.current}/${member.hp.max})，无需进行死亡豁免`);
+    }
     const ds = String(updates.deathSave).trim().toLowerCase();
     const saves = member.deathSaves;
     if (ds === 'success') {
@@ -893,8 +924,7 @@ export function updateState(campaignName, updates = {}) {
       logs.push(`${whoPrefix}死亡豁免失败 (${saves.failures}/3)`);
       if (saves.failures >= 3 && !conditions.includes('死亡')) {
         conditions.push('死亡');
-        const uIdx = conditions.indexOf('昏迷');
-        if (uIdx !== -1) conditions.splice(uIdx, 1);
+        syncHpConditionsForMember(state, member, logs);
         logs.push(`${whoPrefix}累计 3 次死亡豁免失败，角色【死亡】！`);
       }
     } else if (ds === 'crit-fail' || ds === 'nat1') {
@@ -902,8 +932,7 @@ export function updateState(campaignName, updates = {}) {
       logs.push(`${whoPrefix}死亡豁免自然 1 大失败！失败 +2 (${saves.failures}/3)`);
       if (saves.failures >= 3 && !conditions.includes('死亡')) {
         conditions.push('死亡');
-        const uIdx = conditions.indexOf('昏迷');
-        if (uIdx !== -1) conditions.splice(uIdx, 1);
+        syncHpConditionsForMember(state, member, logs);
         logs.push(`${whoPrefix}累计 3 次死亡豁免失败，角色【死亡】！`);
       }
     } else if (ds === 'crit-success' || ds === 'nat20') {
@@ -1101,18 +1130,12 @@ export function updateState(campaignName, updates = {}) {
       state.status.round = val;
     }
     state.status.inCombat = state.status.round > 0;
-    logs.push(`战斗轮次: 第 ${state.status.round} 轮`);
-
-    if (state.status.round > prevRound) {
-      for (const m of state.party) {
-        decrementTimedConditions(getMemberConditions(state, m), logs, state.party.length > 1 ? m.name : '');
-      }
-      if (state.status.encounter?.mobs) {
-        for (const mob of state.status.encounter.mobs) {
-          decrementTimedConditions(mob.conditions, logs, mob.id);
-        }
-      }
+    if (!state.status.inCombat) {
+      state.status.turnIndex = 0;
+      state.status.activeTurn = null;
+      state.status.activeTurnId = null;
     }
+    logs.push(`战斗轮次: 第 ${state.status.round} 轮`);
   }
 
   if (logs.length > 0) {
@@ -1190,6 +1213,7 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     state.status.inCombat = false;
     state.status.turnIndex = 0;
     state.status.activeTurn = null;
+    state.status.activeTurnId = null;
 
     appendLog(
       state,
@@ -1202,6 +1226,9 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     let hdDetail = '';
     const diceToSpend = options.dice ?? options.hitDice;
     if (diceToSpend !== undefined) {
+      if (getMemberConditions(state, primaryTarget).includes('死亡')) {
+        throw new Error(`角色【${primaryTarget.name}】已死亡，无法通过休整恢复生命（需先复活 --revive）`);
+      }
       const spend = parseIntStrict(diceToSpend, 'dice', { min: 1, max: 20 });
       if (spend > primaryTarget.hitDice.current) {
         throw new Error(`可用生命骰不足 (当前剩余: ${primaryTarget.hitDice.current}/${primaryTarget.hitDice.total})`);
@@ -1214,8 +1241,11 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
       if (options.heal !== undefined) {
         totalRolled = parseIntStrict(options.heal, 'heal', { min: 0, max: 9999 });
       } else {
+        const rng = createRng(options.rng);
         for (let i = 0; i < spend; i++) {
-          const r = Math.floor(Math.random() * sides) + 1;
+          const u = rng();
+          const clamped = u >= 1 ? 0.999999999 : (u < 0 ? 0 : u);
+          const r = Math.floor(clamped * sides) + 1;
           const gained = Math.max(1, r + conMod);
           rolls.push(r);
           totalRolled += gained;
@@ -1257,6 +1287,7 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     state.status.inCombat = false;
     state.status.turnIndex = 0;
     state.status.activeTurn = null;
+    state.status.activeTurnId = null;
     appendLog(
       state,
       '短休完成',
@@ -1428,6 +1459,7 @@ export function clearEncounter(campaignName) {
   state.status.inCombat = false;
   state.status.turnIndex = 0;
   state.status.activeTurn = null;
+  state.status.activeTurnId = null;
 
   appendLog(state, '遭遇战结束', '战场已清理，重置战斗轮次与敌方态势');
 
@@ -1439,61 +1471,97 @@ export function advanceTurn(campaignName) {
   if (!state) throw new Error(`未找到战役 "${campaignName}"`);
   clearEphemeralDeltas(state);
 
-  const combatants = [];
+  const allCombatants = [];
+  let seq = 0;
   for (const m of state.party) {
     const conds = getMemberConditions(state, m);
-    if (!conds.includes('死亡')) {
-      combatants.push({
-        type: 'party',
-        id: m.id || m.name,
-        name: m.name,
-        initiative: m.initiative ?? 10,
-        ref: m,
-        conditions: conds
-      });
-    }
+    allCombatants.push({
+      type: 'party',
+      id: m.id || m.name,
+      name: m.name,
+      initiative: m.initiative ?? 10,
+      alive: !conds.includes('死亡'),
+      seq: seq++,
+      ref: m,
+      conditions: conds
+    });
   }
   if (state.status.encounter?.mobs) {
     for (const mob of state.status.encounter.mobs) {
-      if (mob.hp > 0) {
-        combatants.push({
-          type: 'mob',
-          id: mob.id,
-          name: mob.id,
-          initiative: mob.initiative ?? 10,
-          ref: mob,
-          conditions: mob.conditions
-        });
-      }
+      allCombatants.push({
+        type: 'mob',
+        id: mob.id,
+        name: mob.id,
+        initiative: mob.initiative ?? 10,
+        alive: mob.hp > 0,
+        seq: seq++,
+        ref: mob,
+        conditions: mob.conditions
+      });
     }
   }
 
-  combatants.sort((a, b) => {
+  allCombatants.sort((a, b) => {
     if (b.initiative !== a.initiative) return b.initiative - a.initiative;
     if (a.type !== b.type) return a.type === 'party' ? -1 : 1;
-    return 0;
+    return a.seq - b.seq;
   });
 
-  if (combatants.length === 0) {
+  const aliveCombatants = allCombatants.filter(c => c.alive);
+  if (aliveCombatants.length === 0) {
     throw new Error('战场无存活参战单位，无法推进先攻回合');
   }
 
   const logs = [];
-  if (!state.status.inCombat || !state.status.round) {
+  const isFirstTurn = !state.status.inCombat || !state.status.round || !state.status.activeTurnId;
+  let active = null;
+
+  if (isFirstTurn) {
+    const unsetMembers = state.party.filter(
+      m => !getMemberConditions(state, m).includes('死亡') && (m.initiative === null || m.initiative === undefined)
+    );
+    if (unsetMembers.length > 0) {
+      const warnMsg = `⚠️ 未设先攻警告: 队员【${unsetMembers.map(m => m.name).join('、')}】未设先攻值 (--init)，暂按默认 10 参战`;
+      logs.push(warnMsg);
+      state.status.initWarning = warnMsg;
+    } else {
+      delete state.status.initWarning;
+    }
     state.status.inCombat = true;
-    state.status.round = 1;
-    state.status.turnIndex = 0;
+    if (!state.status.round || state.status.round < 1) {
+      state.status.round = 1;
+    }
+    active = aliveCombatants[0];
   } else {
-    state.status.turnIndex = (state.status.turnIndex ?? 0) + 1;
-    if (state.status.turnIndex >= combatants.length) {
-      state.status.turnIndex = 0;
-      state.status.round += 1;
-      logs.push(`进入第 ${state.status.round} 轮`);
+    delete state.status.initWarning;
+    const prevPos = allCombatants.findIndex(c => c.id === state.status.activeTurnId);
+    if (prevPos !== -1) {
+      for (let i = prevPos + 1; i < allCombatants.length; i++) {
+        if (allCombatants[i].alive) {
+          active = allCombatants[i];
+          break;
+        }
+      }
+      if (!active) {
+        state.status.round += 1;
+        logs.push(`进入第 ${state.status.round} 轮`);
+        active = aliveCombatants[0];
+      }
+    } else {
+      const prevInit = state.status.activeTurnInit ?? Infinity;
+      active = aliveCombatants.find(c => c.initiative < prevInit) || null;
+      if (!active) {
+        state.status.round += 1;
+        logs.push(`进入第 ${state.status.round} 轮`);
+        active = aliveCombatants[0];
+      }
     }
   }
 
-  const active = combatants[state.status.turnIndex];
+  state.status.activeTurnId = active.id;
+  state.status.activeTurnInit = active.initiative;
   state.status.activeTurn = active.name;
+  state.status.turnIndex = aliveCombatants.findIndex(c => c.id === active.id);
   decrementTimedConditions(active.conditions, logs, active.name);
   logs.unshift(`轮到【${active.name}】行动 (先攻 ${active.initiative}，第 ${state.status.round} 轮)`);
 
@@ -1949,6 +2017,9 @@ function main() {
       console.log(generateHud(state, 'line', { veil: options.veil }));
     } else if (command === 'next') {
       const state = advanceTurn(campaign);
+      if (state.status.initWarning) {
+        console.log(`${colors.yellow}${state.status.initWarning}${colors.reset}`);
+      }
       console.log(`${colors.green}✓ 先攻回合已推进 -> 当前行动者: 【${state.status.activeTurn}】(第 ${state.status.round} 轮)${colors.reset}\n`);
       console.log(generateHud(state, 'combat', { veil: options.veil }));
     } else if (command === 'mob-add') {

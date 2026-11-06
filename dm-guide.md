@@ -1,6 +1,6 @@
 # D&D 5e 中文全规则地下城主执裁与战役主持手册 (B版·SQLite 增强版)
 
-本指南针对基于 **《DND 5e 不全书》(5echm)** 规则体系、SQLite FTS5 极速引擎（8,953 词条）与 2024 修订版核心机制的跑团主持，提供完整的执裁基准、萌新伴跑教学、战役编排、DMG 2024 完整教学冒险与 38 部经典模组调度及战术地图输出规范。
+本指南针对基于 **《DND 5e 不全书》(5echm)** 规则体系、SQLite FTS5 极速引擎（8,827 词条）与 2024 修订版核心机制的跑团主持，提供完整的执裁基准、萌新伴跑教学、战役编排、DMG 2024 完整教学冒险与 38 部经典模组调度及战术地图输出规范。
 
 ---
 
@@ -141,12 +141,13 @@ B 版规则书以 **2024 官方修订规则 (PHB 2024 / DMG 2024 / MM 2025)** �
 
 ---
 
-## 7. 实时 HUD 状态栏规范与增量算式防漂移锁
+## 7. 实时 HUD 状态栏规范、持续状态递减与增量算式防漂移锁
 
-在每轮探索描写或战斗回合结束时，于回复最底部附带极简 HUD（参见 [`templates/hud-status-bar.md`](templates/hud-status-bar.md)），并坚决执行**数值防漂移锁 (Session Drift Lock)**：
+在本回复中任何数值发生变化、或玩家询问状态时，于回复最底部附带极简 HUD（参见 [`templates/hud-status-bar.md`](templates/hud-status-bar.md)），并坚决执行**数值防漂移锁 (Session Drift Lock)**：
 
 1. **增量算式铁律 (Delta Formula)**：发生 HP 变动、法术位消耗或药水使用时，禁止直接写死孤立结果，必须写出算式锚点（例如 `HP: 8/12 (-4 狼爪)`、`1环:1/2(-1)`）。
 2. **战役节点固化快照 (State Freeze Snapshot)**：遭遇战结束或长短休时输出状态快照，防止长上下文大模型数字漂移。
+3. **带轮数状态唯一递减时机**：`中毒:2` 等持续状态**仅在 `state.js next` 轮转到该状态持有者的回合开始时自动减 1**（`update --round` 只改轮次计数不扣状态）。2024 常见时长对应方式：“直到其下个回合开始”设为 `状态:1`；“直到其下个回合结束”设为不带轮数并在该目标下回合结束时手动 `--remove-condition`。
 
 ```text
 -----------------------------------------------------------------------------------------
@@ -161,6 +162,7 @@ B 版规则书以 **2024 官方修订规则 (PHB 2024 / DMG 2024 / MM 2025)** �
 B 版技能提供两类不同深度的官方模组支持（详见 [`resources/starter-adventure/official-modules-guide.md`](resources/starter-adventure/official-modules-guide.md)）：
 
 ### 8.1 DMG 2024 五大官方完整教学冒险（数据库含完整正文 + 独立 DM 速查包）
+> 运行以下 A 类冒险时，先执行 `node <SKILL_DIR>/scripts/lookup.js module "<冒险名>"` 查阅库内原文，主持包只作辅助；二者冲突以原文为准。
 1. **《秽染溪泉》(The Fouled Stream, Lv.1)**：`resources/starter-adventure/dmg-1-fouled-stream.md`（数据库 `#1071`）
 2. **《矿洞惊魂》(Miner Difficulties, Lv.2)**：`resources/starter-adventure/dmg-2-miner-difficulties.md`（数据库 `#1072`）
 3. **《有翼之神》(The Winged God, Lv.3)**：`resources/starter-adventure/dmg-3-winged-god.md`（数据库 `#1073`）
@@ -168,7 +170,7 @@ B 版技能提供两类不同深度的官方模组支持（详见 [`resources/st
 5. **《北风舞会》(The Boreal Ball, Lv.7)**：`resources/starter-adventure/dmg-5-boreal-ball.md`（数据库 `#1075`）
 
 ### 8.2 5e 经典长篇战役沙盒框架（数据库收录专属怪物/魔法物品附录 + 预设骨架）
-> **重要说明**：《5e不全书》上游未收录 5e 独立出版模组的完整房间剧情文本，仅收录其专属怪物、NPC 与魔法物品附录。DM 主持此类模组时，结合 `official-modules-guide.md` 提供的幕次骨架与 `node scripts/lookup.js module "<模组名>"` 检索到的专属数据卡进行沙盒推演：
+> **重要说明**：《5e不全书》上游未收录 5e 独立出版模组的完整房间剧情文本，仅收录其专属怪物、NPC 与魔法物品附录。DM 主持此类模组时，结合 `official-modules-guide.md` 提供的幕次骨架与 `node <SKILL_DIR>/scripts/lookup.js module "<模组名>"` 检索到的专属数据卡进行沙盒推演：
 1. **《凡达林的失落矿坑》(Lost Mine of Phandelver, 1–5 级)**
 2. **《冰塔峰巨龙》(Dragon of Icespire Peak, 1–6 级)**
 3. **《施特拉德的诅咒》(Curse of Strahd, 1–10 级)**
@@ -179,35 +181,35 @@ B 版技能提供两类不同深度的官方模组支持（详见 [`resources/st
 ## 9. 单人跑团 (Solo Play) 与随从体系
 
 当玩家单独一人冒险时，DM 应主动平衡动作经济性：
-1. **提供忠诚随从伙伴 (Sidekick)：** 赠送矮人老兵斥候 **布兰·铁须**（[`resources/premade-characters/sidekick-bran.md`](resources/premade-characters/sidekick-bran.md)，可通过 `node scripts/state.js init <campaign> --preset valen,bran` 一键入队），分担火力并在局内提供【协助】优势与战术建言。
-2. **遭遇难度预检与波次出怪：** 使用 `node scripts/state.js encounter-calc --party 1 --crs 1/4,1/4,1/4` 检查单人行动经济警告，避免单体玩家同时被 3 名以上敌人包夹。
+1. **提供忠诚随从伙伴 (Sidekick)：** 赠送矮人斥候 **布兰·铁须**（[`resources/premade-characters/sidekick-bran.md`](resources/premade-characters/sidekick-bran.md)，可通过 `node <SKILL_DIR>/scripts/state.js init <campaign> --preset valen,bran` 一键入队），分担火力并在局内提供【协助】优势与战术建言。
+2. **遭遇难度预检与波次出怪：** 使用 `node <SKILL_DIR>/scripts/state.js encounter-calc --party 1 --crs 1/4,1/4,1/4` 检查单人行动经济警告，避免单体玩家同时被 3 名以上敌人包夹。
 3. **败北免死 (Failing Forward)：** 玩家 HP 归零不强制撕卡，可判定为被俘虏、被林地德鲁伊救助或关入地牢，展开越狱支线！
 
 ---
 
 ## 10. 规则即时提取与工具联动 (SQLite --brief 模式)
 
-为保证极速响应和节约 Token，开战或施法时推荐使用 `--brief` 模式：
+为保证极速响应和节约 Token，开战或施法时推荐使用 `--brief` 模式（所有命令均通过 `<SKILL_DIR>` 绝对路径调用，不受当前工作目录限制）：
 
 ```bash
-# 【AI 紧凑数据卡】0.2毫秒点查，100% 保留伤害骰与核心机制
-node scripts/lookup.js monster "地精武者" --brief
-node scripts/lookup.js monster "黑蜘蛛" --brief
-node scripts/lookup.js monster "巫妖" --brief
-node scripts/lookup.js spell "火球术" --brief
-node scripts/lookup.js rule "武器精通" --brief
-node scripts/lookup.js rule "Cleave" --brief
-node scripts/lookup.js item "次元袋" --brief
+# 【AI 紧凑数据卡】0.2毫秒点查，100% 保留伤害骰与全部攻击/动作
+node <SKILL_DIR>/scripts/lookup.js monster "地精武者" --brief
+node <SKILL_DIR>/scripts/lookup.js monster "黑蜘蛛" --brief
+node <SKILL_DIR>/scripts/lookup.js monster "巫妖" --brief
+node <SKILL_DIR>/scripts/lookup.js spell "火球术" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "武器精通" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "Cleave" --brief
+node <SKILL_DIR>/scripts/lookup.js item "次元袋" --brief
 
 # 官方模组调取
-node scripts/lookup.js module "秽染溪泉"
-node scripts/lookup.js module "矿坑"
-node scripts/lookup.js module "施特拉德"
+node <SKILL_DIR>/scripts/lookup.js module "秽染溪泉"
+node <SKILL_DIR>/scripts/lookup.js module "矿坑"
+node <SKILL_DIR>/scripts/lookup.js module "施特拉德"
 
-# 跨平台骰子引擎
-node scripts/roll-dice.js 1d20+5 --attack --ac 15 --label "长剑攻击"
-node scripts/roll-dice.js 1d20+3 --adv --label "优势察觉检定"
-node scripts/roll-dice.js 1d20+6 --hidden
+# 跨平台骰子引擎 (--hidden 暗骰不输出标签，单行返回总值与 HIT/MISS/CRIT/AUTO-MISS/PASS/FAIL/NAT20/NAT1)
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+5 --attack --ac 15 --label "长剑攻击"
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+3 --adv --label "优势察觉检定"
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+6 --attack --ac 15 --hidden
 ```
 
 ---
@@ -216,12 +218,12 @@ node scripts/roll-dice.js 1d20+6 --hidden
 
 每次输出战局与剧情裁决前，按**常驻必检**与**按场景事件触发**两级标准完成自检：
 - **常驻必检（每轮必查）**：
-  1. **门禁 1 (客观真骰)**：通过 `scripts/roll-dice.js` 真实执行掷骰并回显终端结果，严禁口胡假骰。
+  1. **门禁 1 (客观真骰)**：通过 `<SKILL_DIR>/scripts/roll-dice.js` 真实执行掷骰并回显终端结果，严禁口胡假骰。
   2. **门禁 2 (规则时效)**：严格执行 2024 新规（附赠喝药、突袭先攻劣势、力竭每层 -2、八大武器精通、长休恢复全部生命值骰）。
-  3. **门禁 3 (HUD 防漂移)**：底部输出带显式增量算式的 HUD 状态栏（如 `HP: 8/12 (-4 狼爪)`），冒险模式下使用 `--veil` 隐藏敌方精确血量。
-  4. **门禁 7 (去 AI 味与通感)**：杜绝叙述者说教与高频 AI 套话，随场景自然切换句式节奏，下潜嗅觉/触觉/听觉等非视觉感官。
 - **按场景事件触发（满足条件时激活）**：
-  5. **门禁 4 (行动脚手架)**：萌新模式或关键决策点提供场景化的【3 个建议战术选项 + 1 个自由行动入口】。
-  6. **门禁 5 (空间战图)**：进入战斗轮或战场站位变化时，输出带掩体、距离与环境互动标签的 ASCII 战图。
-  7. **门禁 6 (反应暂停)**：敌方回合触发玩家可用反应（借机攻击、护盾术、炼狱叱喝、法术反制）时主动暂停征询。
-  8. **门禁 8 (开局接口)**：Session 0 新开局时严格输出 `references/session-zero-interface.md` 标准三步引导表单。
+  3. **门禁 3 (HUD 防漂移 — 本回复中任何数值发生变化，或玩家询问状态时触发)**：底部输出带显式增量算式的 HUD 状态栏（如 `HP: 8/12 (-4 狼爪)`），冒险模式下使用 `--veil` 隐藏敌方精确血量。
+  4. **门禁 4 (行动脚手架 — 萌新模式/关键决策点触发)**：提供场景化的【3 个建议战术选项 + 1 个自由行动入口】。
+  5. **门禁 5 (空间战图 — 仅战斗轮/站位变化触发)**：进入战斗轮或战场站位变化时，输出带掩体、距离与环境互动标签的 ASCII 战图。
+  6. **门禁 6 (反应暂停 — 仅触发玩家可用反应时激活)**：敌方回合触发玩家可用反应（借机攻击、护盾术、炼狱叱喝、法术反制）时主动暂停征询。
+  7. **门禁 7 (去 AI 味与通感 — 进入新场景或关键叙事节点时触发)**：杜绝叙述者说教与高频 AI 套话，随场景自然切换句式节奏，下潜嗅觉/触觉/听觉等非视觉感官。
+  8. **门禁 8 (开局接口 — 仅 Session 0 新开局触发)**：Session 0 新开局时严格输出 `references/session-zero-interface.md` 标准三步引导表单。

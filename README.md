@@ -1,7 +1,7 @@
 # D&D 5e 中文全规则地下城主技能 (B版 / 5echm 不全书版) 🐉
 
 > **全中文、全扩展、集大成版的 D&D 5e (2024/2025 修订版 + 全官方扩展 + DMG 2024 五大完整冒险 + 38 部经典模组附录) 跑团主持技能。**  
-> 深度挂载国内最权威的 **《DND 5e 不全书》(5echm)** 规则库（8,953 个精准切片与去重索引条目），具备 UTF-8/GBK 智能双模解码与 Markdown 表格转译、毫秒级词条检索器、跨平台原生骰子引擎、多角色小队状态管理器与战术战况图生成。  
+> 深度挂载国内最权威的 **《DND 5e 不全书》(5echm)** 规则库（8,827 个合并去重与来源区分索引条目），具备 UTF-8/GBK 智能双模解码与 Markdown 表格转译、毫秒级词条检索器、跨平台原生骰子引擎、多角色小队状态管理器与战术战况图生成。  
 > **2.2.0 架构特性**：确立 **三级收敛分层架构**，内嵌 **2024 核心执裁常驻微胶囊**，确立 **真机物理掷骰铁律**，绑定 **Session 0 官方开局接口** 与 **DM 执裁 8 项分级门禁卡**，兼容任意 AI Agent 运行环境。
 
 ---
@@ -11,23 +11,41 @@
 - 🏛️ **L0/L1/L2 三级收敛分层架构**：
   - **L0 常驻微胶囊**：2024 八大武器精通、六大核心新规、标准 DC 字典 100% 常驻即时视野；
   - **L1 运行工具与切片**：`session-zero-interface.md`（标准开局）、`roll-dice.js`（物理真骰）、`lookup.js --brief`（紧凑数据卡）、`state.js`（小队与战局状态锁）；
-  - **L2 深度宝库**：97.1MB SQLite FTS5 全量库（8,953 词条，含 391 道 2024 法术、352 件 2024 魔法物品、74 项 2024 专长、378 项 2024 职业特性独立切片）按需毫秒级点查。
+  - **L2 深度宝库**：123.54 MiB SQLite FTS5 无截断全量库（`129,536,000` 字节，8,827 词条，含 391 道 2024 法术、456 项 2024 魔法物品与装备切片、74 项 2024 专长、386 项 2024 职业特性切片；完整正文零截断、全文检索零截断）按需毫秒级点查。
 - 🎲 **真机物理掷骰铁律 (`scripts/roll-dice.js`)**：
-  - 严禁 AI 凭空捏造掷骰数字。支持 `--attack --ac <N>` 攻击自动判定（自然 20 必中、自然 1 必失手）、复合算式、优劣势、暴击翻倍与 `--hidden` 纯数字暗骰。
+  - 严禁 AI 凭空捏造掷骰数字。支持 `--attack --ac <N>` 攻击自动判定（自然 20 必中、自然 1 必失手）、复合算式、优劣势、暴击翻倍与 `--hidden` 暗骰（隐藏标签，单行输出总值及 `HIT`/`MISS`/`CRIT`/`AUTO-MISS`/`PASS`/`FAIL`/`NAT20`/`NAT1`）。
 - 📜 **Session 0 官方标准开局接口 (`references/session-zero-interface.md`)**：
   - 一键弹出三步极速启动卡（模式 ➔ 6 套 2024 预制卡 + 随从布兰 ➔ 自创/DMG 2024 官方完整冒险/经典战役），支持“① ① ①”或“随机”即刻开跑。
 - 📚 **全量中文规则库直通 (`scripts/lookup.js`)**：
   - 核心三本：**《玩家手册2024》**、**《城主指南2024》**、**《怪物图鉴2025》** 完整中文规则与双语标题检索。
   - 官方核心扩展：**《珊娜萨的万事指南》(XGE)**、**《塔莎的万事坩埚》(TCE)**、**《多元宇宙的怪物》(MPMM)**、**《费资本的巨龙宝库》(FTD)**、**《巨人之荣耀》**、**《万象无常书》**。
 - 🏰 **DMG 2024 五大官方完整冒险 + 38 部经典战役模组资源**：
-  - 内置《城主指南2024》五部官方教学短篇冒险完整正文与独立 DM 速查包（《秽染溪泉》《矿洞惊魂》《有翼之神》《兽之角冠》《北风舞会》）；
+  - 内置《城主指南2024》五部官方教学短篇冒险完整正文与独立 DM 速查包（《秽染溪泉》《矿洞惊魂》《有翼之神》《兽之角冠》《北风舞会》，严格区分原文要点与可选 DM 扩展）；
   - 支持调取《凡达林的失落矿坑》《冰塔峰巨龙》《施特拉德的诅咒》等 38 部经典战役的专属怪物、魔法物品附录与三幕沙盒大纲。
 - 💾 **多角色小队状态持久化、先攻轮转与 HUD 防漂移引擎 (`scripts/state.js`)**：
-  - 支持 `--preset valen,bran` 一键加载预设小队、职业充能资源追踪（回气/引导神力等）、法术专注受击 DC 提示、先攻指针推进 (`next`)、带持续轮数的状态自动递减 (`中毒:2`)、战役结构化笔记簿 (`note`)、遭遇难度 XP 计算器 (`encounter-calc`) 与隐藏敌方精确血量的沉浸迷雾模式 (`--veil`)。
+  - 默认存档于技能目录外的用户数据目录（Windows `%APPDATA%\dnd-dm-b\sessions`，Linux/macOS `~/.local/share/dnd-dm-b/sessions`），自动兼容旧目录存档并支持 `DND_SESSIONS_DIR`。支持 `--preset valen,bran` 一键加载预设小队、专注受击 DC 提示（含临时生命吸收伤害）、按行动者 ID 稳定推进先攻 (`next`)、仅在持有者回合初自动递减带轮数状态 (`中毒:2`)、结构化笔记簿 (`note`)、遭遇难度计算 (`encounter-calc`) 与沉浸迷雾 (`--veil`)。
 
 ---
 
 ## 🚀 极速上手 (Quick Start)
+
+> 下方所有命令中的 `<SKILL_DIR>` 指本仓库（即 `SKILL.md` 所在目录）的路径；若你的终端当前已在仓库根目录，也可将 `<SKILL_DIR>` 替换为 `.`。
+
+### 0. 获取规则数据库（首次克隆必做，零 npm 依赖）
+
+为避免超过 GitHub 100 MiB 单文件限制并保证长文与全文索引 100% 完整，`references/rules.db`（`129,536,000` 字节 / `123.54 MiB`）与 `references/topics_index.json`（`2,417,914` 字节 / `2.31 MiB`）不纳入 Git 跟踪。首次克隆后只需执行**一条命令**即可自动就绪：
+
+```bash
+# 一键自动获取（优先下载 GitHub Release 预编译包并严格校验 SHA-256；若尚未发布则自动拉取上游源码构建）
+node <SKILL_DIR>/scripts/setup-db.js
+
+# 也可显式指定获取方式（两种方式均不依赖任何第三方 npm 包）：
+# 方式 ①：从 GitHub Release 下载预编译压缩包 (66,175,625 字节 / 63.11 MiB) 并校验 SHA-256
+node <SKILL_DIR>/scripts/setup-db.js --from-release
+
+# 方式 ②：从 DND5eChm/5echm_web 固定提交 (c1425c8) 本地构建索引与 SQLite 数据库
+node <SKILL_DIR>/scripts/setup-db.js --from-source
+```
 
 ### 1. 开启跑团
 在对话中直接对你的 AI Agent 说：
@@ -35,71 +53,71 @@
 
 DM 将自动调用 `references/session-zero-interface.md` 输出三步启动卡：
 1. **模式选择**：🎭 冒险沉浸模式（默认，隐藏暗骰与怪血）、🌱 萌新保姆模式（带随从导师）或 ⚙️ 规则调试模式。
-2. **角色选择**：从 6 名预制 2024 英雄卡中挑选（战士、游荡者、法师、牧师、圣武士、诗人），单人自动获赠矮人随从布兰·铁须，或现场车卡。
+2. **角色选择**：从 6 名预制 2024 英雄卡中挑选（战士、游荡者、法师、牧师、圣武士、诗人），单人自动获赠矮人斥候随从布兰·铁须，或现场车卡。
 3. **剧本选择**：
-   - 体验自创新手模组《低语地窖与暗影牙痕》（1–2 级五感沉浸）；
    - 体验 DMG 2024 官方完整五部曲冒险（《秽染溪泉》Lv.1 ～ 《北风舞会》Lv.7）；
+   - 体验自创新手模组《低语地窖与暗影牙痕》（1–2 级五感沉浸）；
    - 体验经典战役沙盒（《凡达林的失落矿坑》《冰塔峰巨龙》《施特拉德的诅咒》）或随机生成地下城！
 
 ### 2. 即时规则检索命令 (`scripts/lookup.js`)
 
 ```bash
-# 查询 2025/2014 怪物数值 (--brief 紧凑数据卡，完整呈现 AC/HP/六维/抗性/动作)
-node scripts/lookup.js monster "地精武者" --brief
-node scripts/lookup.js monster "邪魔邪教徒" --brief
-node scripts/lookup.js monster "黑蜘蛛" --brief
-node scripts/lookup.js monster "远古红龙"
+# 查询 2025/2014 怪物数值 (--brief 紧凑数据卡，完整呈现 AC/HP/六维/抗性/全部攻击与动作)
+node <SKILL_DIR>/scripts/lookup.js monster "地精武者" --brief
+node <SKILL_DIR>/scripts/lookup.js monster "邪魔邪教徒" --brief
+node <SKILL_DIR>/scripts/lookup.js monster "黑蜘蛛" --brief
+node <SKILL_DIR>/scripts/lookup.js monster "远古红龙"
 
 # 查询 2024 法术详情 (100% 保留伤害/治疗骰值与升环效应)
-node scripts/lookup.js spell "火球术" --brief
-node scripts/lookup.js spell "恶言相加" --brief
-node scripts/lookup.js spell "炼狱叱喝" --brief
+node <SKILL_DIR>/scripts/lookup.js spell "火球术" --brief
+node <SKILL_DIR>/scripts/lookup.js spell "恶言相加" --brief
+node <SKILL_DIR>/scripts/lookup.js spell "炼狱叱喝" --brief
 
 # 查询 2024 职业核心特性与专长 (毫秒级直达精确锚点)
-node scripts/lookup.js rule "偷袭" --brief
-node scripts/lookup.js rule "动作如潮" --brief
-node scripts/lookup.js rule "圣疗" --brief
-node scripts/lookup.js feat "警戒" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "偷袭" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "动作如潮" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "圣疗" --brief
+node <SKILL_DIR>/scripts/lookup.js feat "警戒" --brief
 
 # 查询 2024 规则、武器精通与异常状态
-node scripts/lookup.js rule "武器精通" --brief
-node scripts/lookup.js rule "Cleave" --brief
-node scripts/lookup.js rule "恐慌" --brief
-node scripts/lookup.js rule "力竭" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "武器精通" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "Cleave" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "恐慌" --brief
+node <SKILL_DIR>/scripts/lookup.js rule "力竭" --brief
 
 # 查询魔法物品与冒险装备
-node scripts/lookup.js item "次元袋" --brief
-node scripts/lookup.js item "治疗药水" --brief
-node scripts/lookup.js item "鸦族圣徽" --brief
+node <SKILL_DIR>/scripts/lookup.js item "次元袋" --brief
+node <SKILL_DIR>/scripts/lookup.js item "治疗药水" --brief
+node <SKILL_DIR>/scripts/lookup.js item "鸦族圣徽" --brief
 
 # 调取 DMG 2024 完整冒险与 5e 模组分类索引
-node scripts/lookup.js module "秽染溪泉"
-node scripts/lookup.js module "矿坑"
-node scripts/lookup.js module "施特拉德"
+node <SKILL_DIR>/scripts/lookup.js module "秽染溪泉"
+node <SKILL_DIR>/scripts/lookup.js module "矿坑"
+node <SKILL_DIR>/scripts/lookup.js module "施特拉德"
 ```
 
 ### 3. 骰子与战役状态引擎命令 (`scripts/roll-dice.js` & `scripts/state.js`)
 
 ```bash
-# 攻击检定 (--attack --ac 自动判定 Nat20 必中 / Nat1 必失手) 与复合暴击伤害
-node scripts/roll-dice.js 1d20+5 --attack --ac 15 --label "长剑攻击"
-node scripts/roll-dice.js 1d8+3+2d8 --crit --label "长剑至圣斩暴击！"
-node scripts/roll-dice.js 1d20+3 --adv --dc 15 --label "优势察觉检定"
-node scripts/roll-dice.js 1d20+6 --hidden
+# 攻击检定 (--attack --ac 自动判定 Nat20 必中 / Nat1 必失手)、复合暴击伤害与暗骰
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+5 --attack --ac 15 --label "长剑攻击"
+node <SKILL_DIR>/scripts/roll-dice.js 1d8+3+2d8 --crit --label "长剑至圣斩暴击！"
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+3 --adv --dc 15 --label "优势察觉检定"
+node <SKILL_DIR>/scripts/roll-dice.js 1d20+6 --attack --ac 15 --hidden
 
-# 预设小队一键初始化与多角色状态管理 (可通过 DND_SESSIONS_DIR 自定义存档目录)
-node scripts/state.js init crypt-run --preset valen,bran --force
-node scripts/state.js update crypt-run --hp -4 --reason "狼爪" --use-resource "回气"
-node scripts/state.js update crypt-run --who "布兰" --hp -3 --reason "短弓流矢"
-node scripts/state.js show crypt-run --hud --veil
+# 预设小队一键初始化与多角色状态管理 (默认写入用户数据目录，可通过 DND_SESSIONS_DIR 自定义)
+node <SKILL_DIR>/scripts/state.js init crypt-run --preset valen,bran --force
+node <SKILL_DIR>/scripts/state.js update crypt-run --hp -4 --reason "狼爪" --use-resource "回气"
+node <SKILL_DIR>/scripts/state.js update crypt-run --who "布兰" --hp -3 --reason "短弓流矢"
+node <SKILL_DIR>/scripts/state.js show crypt-run --hud --veil
 
 # 遭遇战追踪、先攻回合推进、结构化笔记与难度计算
-node scripts/state.js mob-add crypt-run --name "骷髅" --hp 13 --ac 14 --count 2 --init 14
-node scripts/state.js next crypt-run
-node scripts/state.js mob-hit crypt-run --target "骷髅-1" --damage 8
-node scripts/state.js note crypt-run --cat clue --add "石棺背面刻有马拉卡尔的血契符文"
-node scripts/state.js encounter-calc --party 1,1 --crs 1/4,1/4,1/4
-node scripts/state.js rest crypt-run --long
+node <SKILL_DIR>/scripts/state.js mob-add crypt-run --name "骷髅" --hp 13 --ac 14 --count 2 --init 14
+node <SKILL_DIR>/scripts/state.js next crypt-run
+node <SKILL_DIR>/scripts/state.js mob-hit crypt-run --target "骷髅-1" --damage 8
+node <SKILL_DIR>/scripts/state.js note crypt-run --cat clue --add "石棺背面刻有马拉卡尔的血契符文"
+node <SKILL_DIR>/scripts/state.js encounter-calc --party 1,1 --crs 1/4,1/4,1/4
+node <SKILL_DIR>/scripts/state.js rest crypt-run --long
 ```
 
 ---
@@ -116,16 +134,17 @@ dnd-dm-b/
 │   └── adr/
 │       └── 001-rpg-experience-and-code-hardening.md # 架构决策记录 (ADR 001)
 ├── references/
-│   ├── rules.db                      # 原生预编译 SQLite FTS5 规则库 (8,953 词条, 97.1MB)
+│   ├── db-manifest.json              # 预编译库版本、上游提交 c1425c8 与 SHA-256 校验清单
 │   ├── session-zero-interface.md     # 官方 Session 0 极速开局三步引导接口
-│   └── topics_index.json             # 预编译全书高速双语 JSON 索引 (8,953 条目)
+│   ├── rules.db                      # [setup-db 生成, gitignore] SQLite FTS5 规则库 (8,827 词条, 123.54 MiB)
+│   └── topics_index.json             # [setup-db 生成, gitignore] 全书双语 JSON 索引 (8,827 条目, 2.31 MiB)
 ├── scripts/
+│   ├── setup-db.js                   # 规则库一键获取工具 (Release 下载校验 SHA-256 / 5echm_web 本地构建)
 │   ├── lookup.js                     # 核心点查引擎 (支持双语/别名/职业特性/模组分类)
-│   ├── roll-dice.js                  # 跨平台复合骰子引擎 (支持攻击/AC/优劣势/暗骰/批量)
-│   ├── state.js                      # 多角色小队状态、先攻轮转、笔记与遭遇计算引擎
-│   ├── build-db.js                   # SQLite FTS5 数据库预编译与分类摘要构建器
+│   ├── roll-dice.js                  # 跨平台复合骰子引擎 (支持攻击/AC/优劣势/暗骰判定/可控随机种子)
+│   ├── state.js                      # 多角色小队状态、按 ID 先攻轮转、笔记与遭遇计算引擎
+│   ├── build-db.js                   # SQLite FTS5 数据库预编译、怪物动作保留与去重构建器
 │   └── build-index.js                # 规则库 HTML/WCP 全量扫描与子章节切片脚本
-├── sessions/                         # 战役历史与玩家状态存档目录 (支持 DND_SESSIONS_DIR)
 ├── test/                             # 自动化单元与集成测试套件 (npm test)
 │   ├── lookup.test.js
 │   ├── roll-dice.test.js
@@ -141,7 +160,7 @@ dnd-dm-b/
 │   │   ├── dmg-4-horns-of-the-beast.md # DMG 2024 官方教学冒险 4《兽之角冠》(Lv.5)
 │   │   ├── dmg-5-boreal-ball.md      # DMG 2024 官方教学冒险 5《北风舞会》(Lv.7)
 │   │   └── adventure-generator.md    # 随机冒险与地下城生成表
-│   └── premade-characters/           # 6 套 2024 中文预设英雄卡 + 随从布兰 + presets.json
+│   └── premade-characters/           # 6 套 2024 中文预设英雄卡 + 矮人斥候布兰 + presets.json
 └── templates/
     ├── character-sheet.md            # 中文 2024 标准角色卡模板
     ├── combat-tracker.md             # 战术战况与先攻追踪模板

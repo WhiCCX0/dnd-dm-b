@@ -10,6 +10,7 @@
   },
   "scripts": {
     "lookup": "node scripts/lookup.js",
+    "setup-db": "node scripts/setup-db.js",
     "build-index": "node scripts/build-index.js",
     "build-db": "node scripts/build-db.js",
     "roll": "node scripts/roll-dice.js",
