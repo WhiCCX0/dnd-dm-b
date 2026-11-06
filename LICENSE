@@ -1,0 +1,30 @@
+MIT License
+
+Copyright (c) 2026 WhiCCX0 & Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+D&D Rules Content & Translation Attribution Disclaimer (规则数据版权与免责声明)
+-------------------------------------------------------------------------------
+
+1. 引擎与脚本代码：本仓库中的代码脚本（`scripts/`、`test/`）、模板（`templates/`）与自创剧本适用上述 MIT 开源许可证。
+2. 规则与模组版权归属：《龙与地下城》(Dungeons & Dragons, D&D) 的游戏规则、专有名词、怪物、法术及官方战役模组之知识产权归威世智公司 (Wizards of the Coast LLC) 所有。部分基础规则遵循 System Reference Document (SRD) CC-BY-4.0 许可协议。
+3. 中文译本致谢：规则数据库 (`references/rules.db` / `references/topics_index.json`) 中的中文译文整理自国内跑团爱好者社区维护的《DND 5e 不全书》(5echm)，谨向所有参与汉化、校对与排版的译者致以诚挚谢意。
+4. 非商业用途限制：本仓库中的规则索引与数据库仅供个人学习、规则检索与非商业桌面角色扮演游戏 (TRPG) 辅助跑团使用，严禁用于任何商业售卖或违法用途。若用于公开分发，建议仅保留构建脚本并通过外部挂载或私有仓库管理规则库文件。

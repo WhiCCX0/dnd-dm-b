@@ -15,6 +15,7 @@
  *   node scripts/roll-dice.js 1d20+6 --hidden --label "Goblin Stealth"
  *   node scripts/roll-dice.js 1d20+4 --dc 15 --label "Lockpicking DC 15"
  *   node scripts/roll-dice.js 4d6kh3 --label "Stat Roll (Drop Lowest)"
+ *   node scripts/roll-dice.js 2d20kl1 --label "Keep Lowest"
  */
 
 import path from 'path';
@@ -22,6 +23,12 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const MAX_TERMS = 20;
+const MAX_DICE_PER_ROLL = 100;
+const MAX_SIDES = 1000;
+const MAX_MOD = 10000;
+const MAX_BATCH = 100;
 
 const colors = {
   reset: '\x1b[0m',
@@ -39,6 +46,32 @@ function rollDie(sides) {
   return Math.floor(Math.random() * sides) + 1;
 }
 
+function validateDc(rawDc) {
+  if (rawDc === undefined || rawDc === null) return null;
+  const str = String(rawDc).trim();
+  if (!/^[+-]?\d+$/.test(str)) {
+    throw new Error(`Invalid DC value: "${rawDc}" (must be an integer)`);
+  }
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) || num < -1000 || num > 1000) {
+    throw new Error(`DC value out of range: "${rawDc}"`);
+  }
+  return num;
+}
+
+function validateBatch(rawBatch) {
+  if (rawBatch === undefined || rawBatch === null) return 1;
+  const str = String(rawBatch).trim();
+  if (!/^\d+$/.test(str)) {
+    throw new Error(`Invalid batch count: "${rawBatch}" (must be a positive integer)`);
+  }
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) || num < 1 || num > MAX_BATCH) {
+    throw new Error(`Batch count out of range: "${rawBatch}" (must be 1..${MAX_BATCH})`);
+  }
+  return num;
+}
+
 function printHelp() {
   console.log(`
 ${colors.bright}${colors.cyan}🎲 D&D Cross-Platform Dice Roller${colors.reset}
@@ -50,16 +83,17 @@ ${colors.yellow}Expressions:${colors.reset}
   1d20+5          Standard d20 roll with modifier
   2d6+3           Multi-dice damage roll
   4d6kh3          Roll 4d6, keep highest 3 (stat generation)
+  2d20kl1         Roll 2d20, keep lowest 1
   1d100           Percentile die
 
 ${colors.yellow}Options:${colors.reset}
   --label "<text>"      Description for the roll (e.g., "Perception check")
-  --adv, --advantage    Roll twice on d20, take the higher result
-  --dis, --disadvantage Roll twice on d20, take the lower result
+  --adv, --advantage    Roll twice on 1d20, take the higher result
+  --dis, --disadvantage Roll twice on 1d20, take the lower result
   --crit                Double the dice count for critical hit damage
   --dc <number>         Evaluate against target DC (Success / Failure)
   --hidden              Output ONLY the final total number (for secret DM rolls)
-  --batch <count>       Roll the expression multiple times
+  --batch <count>       Roll the expression multiple times (1..100)
   --help, -h            Show this help message
 `);
 }
@@ -72,8 +106,10 @@ function parseArgs(args) {
     disadvantage: false,
     crit: false,
     dc: null,
+    rawDc: undefined,
     hidden: false,
     batch: 1,
+    rawBatch: undefined,
     help: false,
   };
 
@@ -92,38 +128,66 @@ function parseArgs(args) {
     } else if (arg === '--hidden') {
       parsed.hidden = true;
     } else if (arg === '--dc') {
-      parsed.dc = parseInt(args[++i], 10);
+      parsed.rawDc = args[++i] ?? '';
     } else if (arg === '--batch') {
-      parsed.batch = parseInt(args[++i], 10) || 1;
+      parsed.rawBatch = args[++i] ?? '';
     } else if (!parsed.expr && !arg.startsWith('-')) {
       parsed.expr = arg;
+    } else if (!parsed.expr && /^-[0-9dD]/.test(arg)) {
+      parsed.expr = arg;
     }
+  }
+
+  if (parsed.rawDc !== undefined) {
+    parsed.dc = validateDc(parsed.rawDc);
+  }
+  if (parsed.rawBatch !== undefined) {
+    parsed.batch = validateBatch(parsed.rawBatch);
   }
 
   return parsed;
 }
 
-function parseDiceExpression(expr) {
+export function parseDiceExpression(expr) {
+  if (typeof expr !== 'string') {
+    throw new Error(`Invalid dice expression: "${String(expr)}"`);
+  }
   const clean = expr.replace(/\s+/g, '');
   if (!clean) {
     throw new Error(`Invalid dice expression: "${expr}". Examples: 1d20+5, 2d6+1d8+3, 4d6kh3`);
   }
 
-  // Check 4d6kh3 special syntax first (keep highest N)
-  const khMatch = clean.match(/^(\d+)?d(\d+)kh(\d+)([+-]\d+)?$/i);
-  if (khMatch) {
-    const numDice = parseInt(khMatch[1] || '1', 10);
-    const sides = parseInt(khMatch[2], 10);
-    const keepCount = parseInt(khMatch[3], 10);
-    if (numDice <= 0 || sides <= 0 || numDice > 100 || sides > 1000 || keepCount <= 0 || keepCount > numDice) {
-      throw new Error(`Dice count, sides, or keep count out of range in "${expr}"`);
+  // Check keep-highest (kh) or keep-lowest (kl) special syntax first (e.g. 4d6kh3, 4d6kl3)
+  const khlMatch = clean.match(/^(\d+)?d(\d+)k([hl])(\d+)([+-]\d+)?$/i);
+  if (khlMatch) {
+    const numDice = Number(khlMatch[1] || '1');
+    const sides = Number(khlMatch[2]);
+    const keepMode = khlMatch[3].toLowerCase() === 'l' ? 'kl' : 'kh';
+    const keepCount = Number(khlMatch[4]);
+    const modStr = khlMatch[5] || '0';
+    const mod = Number(modStr);
+
+    if (
+      !Number.isSafeInteger(numDice) ||
+      !Number.isSafeInteger(sides) ||
+      !Number.isSafeInteger(keepCount) ||
+      !Number.isSafeInteger(mod) ||
+      numDice <= 0 ||
+      sides <= 0 ||
+      numDice > MAX_DICE_PER_ROLL ||
+      sides > MAX_SIDES ||
+      keepCount <= 0 ||
+      keepCount > numDice ||
+      Math.abs(mod) > MAX_MOD
+    ) {
+      throw new Error(`Dice count, sides, keep count, or modifier out of range in "${expr}"`);
     }
     return {
-      type: 'kh',
+      type: keepMode,
       numDice,
       sides,
       keepCount,
-      mod: parseInt(khMatch[4] || '0', 10)
+      mod
     };
   }
 
@@ -131,6 +195,7 @@ function parseDiceExpression(expr) {
   const regex = /([+-]?)(?:(\d*)d(\d+)|(\d+))/gi;
   const terms = [];
   let lastIndex = 0;
+  let totalDice = 0;
   let match;
 
   while ((match = regex.exec(clean)) !== null) {
@@ -141,15 +206,35 @@ function parseDiceExpression(expr) {
 
     const sign = match[1] === '-' ? -1 : 1;
     if (match[3] !== undefined) {
-      const count = parseInt(match[2] || '1', 10);
-      const sides = parseInt(match[3], 10);
-      if (count <= 0 || sides <= 0 || count > 100 || sides > 1000) {
+      const countStr = match[2] || '1';
+      const sidesStr = match[3];
+      if (countStr.length > 4 || sidesStr.length > 5) {
         throw new Error(`Dice count or sides out of range in "${expr}"`);
+      }
+      const count = Number(countStr);
+      const sides = Number(sidesStr);
+      if (count <= 0 || sides <= 0 || count > MAX_DICE_PER_ROLL || sides > MAX_SIDES) {
+        throw new Error(`Dice count or sides out of range in "${expr}"`);
+      }
+      totalDice += count;
+      if (totalDice > MAX_DICE_PER_ROLL) {
+        throw new Error(`Total dice count (${totalDice}) out of range in "${expr}" (max ${MAX_DICE_PER_ROLL})`);
       }
       terms.push({ type: 'dice', sign, count, sides, raw: match[0] });
     } else if (match[4] !== undefined) {
-      const val = parseInt(match[4], 10);
+      const valStr = match[4];
+      if (valStr.length > 5) {
+        throw new Error(`Modifier value out of range in "${expr}" (max ${MAX_MOD})`);
+      }
+      const val = Number(valStr);
+      if (!Number.isSafeInteger(val) || val > MAX_MOD) {
+        throw new Error(`Modifier value out of range in "${expr}" (max ${MAX_MOD})`);
+      }
       terms.push({ type: 'mod', sign, val: sign * val, raw: match[0] });
+    }
+
+    if (terms.length > MAX_TERMS) {
+      throw new Error(`Too many terms in dice expression "${expr}" (max ${MAX_TERMS}, out of range)`);
     }
   }
 
@@ -160,15 +245,23 @@ function parseDiceExpression(expr) {
   return { type: 'compound', terms };
 }
 
-function executeSingleRoll(expr, options) {
+function executeSingleRoll(expr, options = {}) {
   const parsed = parseDiceExpression(expr);
+  const hasAdvOrDis = Boolean(options.advantage || options.disadvantage);
 
-  // 1. Keep-highest syntax (4d6kh3)
-  if (parsed.type === 'kh') {
-    const { numDice, sides, keepCount, mod } = parsed;
+  // 1. Keep-highest / Keep-lowest syntax (4d6kh3 / 4d6kl3)
+  if (parsed.type === 'kh' || parsed.type === 'kl') {
+    if (hasAdvOrDis) {
+      throw new Error(`Advantage/Disadvantage cannot be combined with ${parsed.type} in "${expr}"`);
+    }
+    let { numDice, sides, keepCount, mod } = parsed;
+    if (options.crit && sides !== 20) {
+      numDice *= 2;
+      keepCount *= 2;
+    }
     const rolls = [];
     for (let i = 0; i < numDice; i++) rolls.push(rollDie(sides));
-    const sorted = [...rolls].sort((a, b) => b - a);
+    const sorted = [...rolls].sort((a, b) => (parsed.type === 'kl' ? a - b : b - a));
     const kept = sorted.slice(0, keepCount);
     const total = kept.reduce((a, b) => a + b, 0) + mod;
 
@@ -184,7 +277,14 @@ function executeSingleRoll(expr, options) {
 
   const terms = parsed.terms;
   const diceTerms = terms.filter(t => t.type === 'dice');
-  const hasD20Check = diceTerms.some(t => t.sides === 20);
+  const d20Terms = diceTerms.filter(t => t.sides === 20);
+  const hasD20Check = d20Terms.length > 0;
+
+  if (hasAdvOrDis) {
+    if (d20Terms.length !== 1 || d20Terms[0].count !== 1 || d20Terms[0].sign !== 1) {
+      throw new Error(`Advantage/Disadvantage only applies to a single 1d20 roll, got "${expr}"`);
+    }
+  }
 
   // 2. Simple single-dice expression (backward-compatible fast-path for positive single dice)
   if (diceTerms.length === 1 && diceTerms[0].sign === 1 && (terms.length === 1 || (terms.length === 2 && terms[1].type === 'mod'))) {
@@ -197,17 +297,21 @@ function executeSingleRoll(expr, options) {
       numDice *= 2;
     }
 
-    // Handle advantage / disadvantage on d20
-    if (sides === 20 && (options.advantage || options.disadvantage)) {
+    // Handle advantage / disadvantage on 1d20
+    if (sides === 20 && hasAdvOrDis) {
       const r1 = rollDie(20);
       const r2 = rollDie(20);
       let chosen;
+      let modeTag;
       if (options.advantage && options.disadvantage) {
         chosen = r1; // cancel out
+        modeTag = 'Adv+Dis Canceled';
       } else if (options.advantage) {
         chosen = Math.max(r1, r2);
+        modeTag = 'Advantage';
       } else {
         chosen = Math.min(r1, r2);
+        modeTag = 'Disadvantage';
       }
       const total = chosen + mod;
 
@@ -216,7 +320,8 @@ function executeSingleRoll(expr, options) {
       else if (chosen === 1) d20Special = 'NATURAL 1!';
 
       return {
-        expr: `${expr} (${options.advantage ? 'Advantage' : 'Disadvantage'})`,
+        expr: `${expr} (${modeTag})`,
+        mode: modeTag,
         rolls: [r1, r2],
         chosen,
         mod,
@@ -268,7 +373,7 @@ function executeSingleRoll(expr, options) {
         numDice *= 2;
       }
 
-      if (term.sides === 20 && numDice === 1 && (options.advantage || options.disadvantage)) {
+      if (term.sides === 20 && numDice === 1 && hasAdvOrDis) {
         const r1 = rollDie(20);
         const r2 = rollDie(20);
         let chosen;
@@ -325,7 +430,13 @@ function executeSingleRoll(expr, options) {
 
 function main() {
   const args = process.argv.slice(2);
-  const parsed = parseArgs(args);
+  let parsed;
+  try {
+    parsed = parseArgs(args);
+  } catch (err) {
+    console.error(`${colors.red}Error: ${err.message}${colors.reset}`);
+    process.exit(1);
+  }
 
   if (parsed.help || !parsed.expr) {
     printHelp();
@@ -400,15 +511,17 @@ function main() {
  * Programmatic roll function for in-process execution (<0.1ms)
  */
 export function roll(expr, options = {}) {
+  const dcVal = validateDc(options.dc);
+  const batchVal = validateBatch(options.batch);
   const parsedOpts = {
     expr,
     advantage: Boolean(options.advantage || options.adv),
     disadvantage: Boolean(options.disadvantage || options.dis),
     crit: Boolean(options.crit),
-    dc: options.dc !== undefined && options.dc !== null ? parseInt(options.dc, 10) : null,
+    dc: dcVal,
     hidden: Boolean(options.hidden),
     label: options.label || '',
-    batch: options.batch || 1
+    batch: batchVal
   };
   const result = executeSingleRoll(expr, parsedOpts);
   if (parsedOpts.dc !== null) {
@@ -428,4 +541,3 @@ const isMain = process.argv[1] && (
 if (isMain) {
   main();
 }
-

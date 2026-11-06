@@ -5,7 +5,7 @@
  *
  * 核心升级特性:
  * 1. 原生集成 references/rules.db (Node 24 node:sqlite 驱动，零外部依赖)
- * 2. 0.2 毫秒级 B-Tree 点查与 FTS5 全文模糊检索
+ * 2. B-Tree 表达式索引点查与 FTS5 全文倒排检索 (含正文 content_md)
  * 3. 专为 AI Agent 打造的 --brief / --agent 紧凑模式 (<80 tokens，节省 90% 上下文)
  * 4. 完美兼容 2024/2025 修订版与 5e 全扩展 (中英文双语、拼音、同义词无缝解析)
  * 5. 穿透 38 部官方模组全部章节、怪物、魔法物品与剧情手记
@@ -22,11 +22,18 @@ const __dirname = path.dirname(__filename);
 const dbPath = path.resolve(__dirname, '../references/rules.db');
 const indexFile = path.resolve(__dirname, '../references/topics_index.json');
 
-const rootCandidates = [
-  path.resolve(__dirname, '../references/rules_source'),
-  path.resolve(__dirname, '../../DND_5e_Rules/rules_source')
-];
-const RULES_ROOT = rootCandidates.find(p => fs.existsSync(p));
+export const VALID_COMMANDS = new Set([
+  'monster',
+  'spell',
+  'rule',
+  'condition',
+  'item',
+  'class',
+  'module',
+  'search',
+  'feat',
+  'origin'
+]);
 
 // Color helpers
 const colors = {
@@ -56,31 +63,35 @@ ${colors.yellow}可用命令 (支持中英文、同义词与别名):${colors.res
   ${colors.green}item${colors.reset} <名称>         魔法物品与武器装备 (如: 次元袋, 治疗药水, Bag of Holding, 巨剑)
   ${colors.green}class${colors.reset} <名称>        职业成长与子职特性 (如: 战士, 狂战士道途, 奇械师, Artificer)
   ${colors.green}module${colors.reset} <名称>       官方 38 部战役模组章节 (如: 矿坑, 冰塔峰, 施特拉德, 龙金劫)
-  ${colors.green}search${colors.reset} <关键词>     全库 9,284 词条 FTS5 全文倒排检索
+  ${colors.green}search${colors.reset} <关键词>     全库 FTS5 全文倒排检索 (覆盖标题、别名、摘要与完整正文)
 
 ${colors.yellow}选项:${colors.reset}
   ${colors.cyan}--brief, --agent, -b${colors.reset}   AI Agent 紧凑数据卡模式 (<80 tokens，超省上下文)
-  ${colors.cyan}--full, -f${colors.reset}             完整长篇输出模式
+  ${colors.cyan}--full, -f${colors.reset}             完整长篇输出模式 (不折叠超过 300 行的长文)
+  ${colors.cyan}--json, -j${colors.reset}             输出结构化 JSON 对象
 
 ${colors.yellow}高频示例:${colors.reset}
   node scripts/lookup.js monster "巫妖" --brief   # AI 跑团调用：极速获取战斗精简数据
   node scripts/lookup.js rule "武器专精"          # 提取 2024 八大精通词条
-  node scripts/lookup.js spell "Fireball"         # 毫秒级提取 2024 三环火球术
+  node scripts/lookup.js spell "Fireball"         # 极速提取 2024 三环火球术
   node scripts/lookup.js item "次元袋"            # 提取 2024 次元袋属性
   node scripts/lookup.js module "矿坑"            # 调取凡达林的失落矿坑章节与怪物
 `);
 }
 
 // ----------------------------------------------------
-// SQLite Engine
+// SQLite Engine & Statement Cache
 // ----------------------------------------------------
 
 let sqliteDb = null;
+const stmtCache = new Map();
+
 function getDb() {
   if (sqliteDb) return sqliteDb;
   if (fs.existsSync(dbPath)) {
     try {
       sqliteDb = new DatabaseSync(dbPath, { readOnly: true });
+      stmtCache.clear();
       return sqliteDb;
     } catch (err) {
       if (process.env.DEBUG) {
@@ -89,6 +100,19 @@ function getDb() {
     }
   }
   return null;
+}
+
+function prepareCached(db, sql) {
+  let stmt = stmtCache.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    stmtCache.set(sql, stmt);
+  }
+  return stmt;
+}
+
+export function escapeLike(str) {
+  return String(str).replace(/[\\%_]/g, '\\$&');
 }
 
 // 常用玩家中文口语与动作别名映射表 (精简重定向至 2024 官方规范条目)
@@ -160,7 +184,8 @@ const VERNACULAR_MAP = {
   // 道具与装备俗称
   '血瓶': { query: '治疗药水', command: 'item' },
   '红药水': { query: '治疗药水', command: 'item' },
-  '大红': { query: '高级治疗药水', command: 'item' },
+  '大红': { query: '高等治疗药水', command: 'item' },
+  '高级治疗药水': { query: '高等治疗药水', command: 'item' },
   '储物袋': { query: '次元袋', command: 'item' },
   '空间袋': { query: '次元袋', command: 'item' },
 
@@ -181,7 +206,7 @@ const VERNACULAR_MAP = {
 };
 
 // 12 大核心职业关键招牌特性直达映射库 (2024 官方专有特性速查)
-const CLASS_FEATURES_MAP = {
+export const CLASS_FEATURES_MAP = {
   '偷袭': {
     class: '游荡者',
     feature: '偷袭',
@@ -272,67 +297,109 @@ const CLASS_FEATURES_MAP = {
   }
 };
 
-/**
- * Execute query using SQLite B-Tree & FTS5
- */
-function querySqlite(command, query, isBrief, options = {}) {
-  const db = getDb();
-  if (!db) return null;
-
-  let qTrim = (query || '').trim();
-  let activeCmd = command;
-
-  // 0. 优先检查职业核心特性直达
-  if (CLASS_FEATURES_MAP[qTrim]) {
-    const feat = CLASS_FEATURES_MAP[qTrim];
-    if (options.json) {
-      return {
-        found: true,
-        entry: {
-          id: 99900 + Object.keys(CLASS_FEATURES_MAP).indexOf(qTrim),
-          category: 'class_feature',
-          title: `${feat.class}：${feat.feature}`,
-          titleEn: feat.titleEn,
-          edition: feat.edition || '2024',
-          url: feat.url,
-          anchor: feat.feature,
-          brief: feat.brief,
-          content: feat.brief
-        },
-        related: []
-      };
-    }
-    console.log(`${colors.green}=== 找到条目: 【${feat.class}：${feat.feature} (${feat.titleEn})】 [2024/2025 修订版] ===${colors.reset}`);
-    console.log(`${colors.dim}来源: references/rules_source/${feat.url} #${feat.feature}${colors.reset}\n`);
-    if (isBrief) {
-      console.log(`${colors.yellow}[AI 紧凑数据卡]${colors.reset}`);
-      console.log(feat.brief);
-    } else {
-      console.log(feat.brief);
-    }
-    return true;
+function resolveClassFeature(qTrim, isBrief, options = {}) {
+  if (!CLASS_FEATURES_MAP[qTrim]) return null;
+  const feat = CLASS_FEATURES_MAP[qTrim];
+  if (options.json) {
+    return {
+      found: true,
+      entry: {
+        id: 99900 + Object.keys(CLASS_FEATURES_MAP).indexOf(qTrim),
+        category: 'class_feature',
+        title: `${feat.class}：${feat.feature}`,
+        titleEn: feat.titleEn,
+        edition: feat.edition || '2024',
+        url: feat.url,
+        anchor: feat.feature,
+        brief: feat.brief,
+        content: feat.brief
+      },
+      related: []
+    };
   }
+  console.log(`${colors.green}=== 找到条目: 【${feat.class}：${feat.feature} (${feat.titleEn})】 [2024/2025 修订版] ===${colors.reset}`);
+  console.log(`${colors.dim}来源: 5echm/${feat.url} #${feat.feature}${colors.reset}\n`);
+  if (isBrief) {
+    console.log(`${colors.yellow}[AI 紧凑数据卡]${colors.reset}`);
+    console.log(feat.brief);
+  } else {
+    console.log(feat.brief);
+  }
+  return true;
+}
 
-  // 检查口语别名重定向
+function resolveVernacular(command, qTrim) {
+  let activeCmd = command;
+  let resolvedQuery = qTrim;
   if (VERNACULAR_MAP[qTrim]) {
     const mapped = VERNACULAR_MAP[qTrim];
     if (activeCmd === 'search' || !activeCmd || activeCmd === 'rule') {
       activeCmd = mapped.command || activeCmd;
     }
-    qTrim = mapped.query;
+    resolvedQuery = mapped.query;
+  }
+  return { activeCmd, resolvedQuery };
+}
+
+function getCategoryFilterSql(activeCmd, { useIndex = true } = {}) {
+  const col = useIndex ? 'category' : '+category';
+  if (activeCmd === 'monster') return `${col} = 'monster'`;
+  if (activeCmd === 'spell') return `${col} = 'spell'`;
+  if (activeCmd === 'item') return `${col} = 'item'`;
+  if (activeCmd === 'class') return `${col} = 'class'`;
+  if (activeCmd === 'feat') return `${col} = 'feat'`;
+  if (activeCmd === 'origin') return `${col} = 'origin'`;
+  if (activeCmd === 'rule') return `${col} IN ('rule', 'condition', 'feat')`;
+  if (activeCmd === 'condition') return `${col} IN ('condition', 'rule')`;
+  if (activeCmd === 'module') return `(${col} = 'module' OR url LIKE '%模组%')`;
+  return null;
+}
+
+function matchesCategoryJs(entryCat, entryUrl, activeCmd) {
+  if (!activeCmd || activeCmd === 'search') return true;
+  if (activeCmd === 'monster') return entryCat === 'monster';
+  if (activeCmd === 'spell') return entryCat === 'spell';
+  if (activeCmd === 'item') return entryCat === 'item';
+  if (activeCmd === 'class') return entryCat === 'class';
+  if (activeCmd === 'feat') return entryCat === 'feat';
+  if (activeCmd === 'origin') return entryCat === 'origin';
+  if (activeCmd === 'rule') return ['rule', 'condition', 'feat'].includes(entryCat);
+  if (activeCmd === 'condition') return ['condition', 'rule'].includes(entryCat);
+  if (activeCmd === 'module') return entryCat === 'module' || (entryUrl && entryUrl.includes('模组'));
+  return true;
+}
+
+/**
+ * Execute query using SQLite B-Tree & FTS5
+ * Returns:
+ *   - null if SQLite DB is not available (triggers JSON fallback)
+ *   - result object / boolean if DB is available (even when no entry is found)
+ */
+function querySqlite(command, query, isBrief, options = {}) {
+  const db = getDb();
+  if (!db) return null;
+
+  const rawTrim = (query || '').trim();
+  const isFull = Boolean(options.full || options.f);
+
+  if (!rawTrim || !/[a-zA-Z0-9\u4e00-\u9fa5]/.test(rawTrim)) {
+    if (options.json) return { found: false, command, query: rawTrim };
+    return false;
   }
 
-  const qLower = qTrim.toLowerCase();
+  // 0. 优先检查职业核心特性直达
+  const classFeatRes = resolveClassFeature(rawTrim, isBrief, options);
+  if (classFeatRes) return classFeatRes;
 
-  // Category mapping
-  let categoryFilter = null;
-  if (activeCmd === 'monster') categoryFilter = "category = 'monster'";
-  else if (activeCmd === 'spell') categoryFilter = "category = 'spell'";
-  else if (activeCmd === 'item') categoryFilter = "category = 'item'";
-  else if (activeCmd === 'class') categoryFilter = "category = 'class'";
-  else if (activeCmd === 'rule') categoryFilter = "category IN ('rule', 'condition', 'feat')";
-  else if (activeCmd === 'condition') categoryFilter = "category IN ('condition', 'rule')";
-  else if (activeCmd === 'module') categoryFilter = "(category = 'module' OR url LIKE '%模组%')";
+  // 检查口语别名重定向
+  const { activeCmd, resolvedQuery: qTrim } = resolveVernacular(command, rawTrim);
+  const qLower = qTrim.toLowerCase();
+  const qEscaped = escapeLike(qTrim);
+  const qLowerEscaped = escapeLike(qLower);
+  const hasSqlWildcardLiteral = /[%_]/.test(rawTrim);
+
+  const categoryFilter = getCategoryFilterSql(activeCmd, { useIndex: true });
+  const categoryFilterNoIdx = getCategoryFilterSql(activeCmd, { useIndex: false });
 
   // Module command specific listing
   if (activeCmd === 'module') {
@@ -340,12 +407,12 @@ function querySqlite(command, query, isBrief, options = {}) {
       SELECT id, title, title_en, url, content_md, brief_md
       FROM entries
       WHERE (category = 'module' OR url LIKE '%模组%')
-        AND (title LIKE ? OR title_en LIKE ? OR aliases LIKE ? OR url LIKE ?)
+        AND (title LIKE ? ESCAPE '\\' OR title_en LIKE ? ESCAPE '\\' OR aliases LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')
       ORDER BY (CASE WHEN content_md != '' THEN 0 ELSE 1 END), (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC
       LIMIT 20
     `;
-    const wildcard = `%${qTrim}%`;
-    const rows = db.prepare(modSql).all(wildcard, wildcard, wildcard, wildcard);
+    const wildcard = `%${qEscaped}%`;
+    const rows = prepareCached(db, modSql).all(wildcard, wildcard, wildcard, wildcard);
     if (rows.length > 0) {
       const nonEmptyRows = rows.filter(r => r.content_md || r.brief_md);
       const pool = nonEmptyRows.length > 0 ? nonEmptyRows : rows;
@@ -375,50 +442,58 @@ function querySqlite(command, query, isBrief, options = {}) {
       console.log(`${colors.green}=== 找到模组战役资源: 【${qTrim}】 (共匹配到 ${rows.length} 个条目) ===${colors.reset}\n`);
       console.log(`${colors.yellow}展示主篇内容: 【${overview.title}】 (${overview.url})${colors.reset}\n`);
       const dispText = isBrief && overview.brief_md ? overview.brief_md : (overview.content_md || overview.brief_md || '');
-      console.log(dispText.slice(0, 1800) + '\n');
+      console.log((isFull ? dispText : dispText.slice(0, 1800)) + '\n');
       console.log(`${colors.dim}--- 该模组包含的章节与资源清单 (前 15 项) ---${colors.reset}`);
       rows.slice(0, 15).forEach(f => console.log(`${colors.cyan}  • [${f.title}${f.title_en ? ' / ' + f.title_en : ''}]${colors.reset} -> ${f.url}`));
       return true;
     }
   }
 
-  // 1. Exact match (Point Lookup via B-Tree Index: 0.2ms)
-  let exactSql = `
+  // 1a. Exact match via B-Tree expression indexes (MULTI-INDEX OR: ~0.1ms)
+  let exactIdxSql = `
     SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
     FROM entries
-    WHERE (content_md != '' OR brief_md != '')
-      AND (
-        LOWER(title) = ?
-        OR LOWER(title_en) = ?
-        OR LOWER(anchor) = ?
-        OR (', ' || LOWER(aliases) || ', ') LIKE ?
-      )
+    WHERE (LOWER(title) = ? OR LOWER(title_en) = ? OR LOWER(anchor) = ?)
+      AND (content_md != '' OR brief_md != '')
   `;
-  if (categoryFilter) exactSql += ` AND ${categoryFilter}`;
-  exactSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
+  if (categoryFilterNoIdx) exactIdxSql += ` AND ${categoryFilterNoIdx}`;
+  exactIdxSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
 
-  let rows = db.prepare(exactSql).all(qLower, qLower, qLower, `%, ${qLower}, %`);
+  let rows = prepareCached(db, exactIdxSql).all(qLower, qLower, qLower);
 
-  // 2. Starts with / Prefix match
+  // 1b. Exact alias match (only if title/title_en/anchor exact match returned nothing)
+  if (rows.length === 0) {
+    let exactAliasSql = `
+      SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
+      FROM entries
+      WHERE (content_md != '' OR brief_md != '')
+        AND (', ' || LOWER(aliases) || ', ') LIKE ? ESCAPE '\\'
+    `;
+    if (categoryFilter) exactAliasSql += ` AND ${categoryFilter}`;
+    exactAliasSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
+    rows = prepareCached(db, exactAliasSql).all(`%, ${qLowerEscaped}, %`);
+  }
+
+  // 2. Starts with / Prefix match (with LIKE wildcards properly escaped)
   if (rows.length === 0) {
     let prefixSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
       WHERE (content_md != '' OR brief_md != '')
-        AND (LOWER(title) LIKE ? OR LOWER(title_en) LIKE ? OR LOWER(aliases) LIKE ?)
+        AND (LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(title_en) LIKE ? ESCAPE '\\' OR LOWER(aliases) LIKE ? ESCAPE '\\')
     `;
     if (categoryFilter) prefixSql += ` AND ${categoryFilter}`;
     prefixSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
-    rows = db.prepare(prefixSql).all(`${qLower}%`, `${qLower}%`, `%${qLower}%`);
+    rows = prepareCached(db, prefixSql).all(`${qLowerEscaped}%`, `${qLowerEscaped}%`, `%${qLowerEscaped}%`);
   }
 
-  // 3. FTS5 Full-Text Match
-  if (rows.length === 0 && qTrim) {
+  // 3. FTS5 Full-Text Match (indexes title, title_en, aliases, brief_md, and full content_md)
+  if (rows.length === 0 && qTrim && !hasSqlWildcardLiteral) {
     try {
       const sanitized = qTrim.replace(/[^\w\u4e00-\u9fa5]/g, ' ').trim();
       const tokens = sanitized.split(/\s+/).filter(Boolean);
       if (tokens.length > 0) {
-        const ftsQuery = tokens.map(t => `"${t}"`).join(' ');
+        const ftsQuery = tokens.map(t => `"${t}"*`).join(' ');
         let ftsSql = `
           SELECT e.id, e.category, e.title, e.title_en, e.aliases, e.url, e.anchor, e.edition, e.content_md, e.brief_md
           FROM entries_fts f
@@ -428,7 +503,7 @@ function querySqlite(command, query, isBrief, options = {}) {
         `;
         if (categoryFilter) ftsSql += ` AND ${categoryFilter}`;
         ftsSql += ` ORDER BY (CASE WHEN e.edition = '2024' THEN 1 ELSE 2 END), rank LIMIT 6`;
-        rows = db.prepare(ftsSql).all(ftsQuery);
+        rows = prepareCached(db, ftsSql).all(ftsQuery);
       }
     } catch (err) {
       if (process.env.DEBUG) {
@@ -437,31 +512,44 @@ function querySqlite(command, query, isBrief, options = {}) {
     }
   }
 
-  // 4. Substring Contains Match
+  // 4. Substring Contains Match (with LIKE wildcards properly escaped)
   if (rows.length === 0) {
     let subSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
       WHERE (content_md != '' OR brief_md != '')
-        AND (title LIKE ? OR title_en LIKE ? OR aliases LIKE ? OR url LIKE ?)
+        AND (title LIKE ? ESCAPE '\\' OR title_en LIKE ? ESCAPE '\\' OR aliases LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')
     `;
     if (categoryFilter) subSql += ` AND ${categoryFilter}`;
     subSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
-    const wild = `%${qTrim}%`;
-    rows = db.prepare(subSql).all(wild, wild, wild, wild);
+    const wild = `%${qEscaped}%`;
+    rows = prepareCached(db, subSql).all(wild, wild, wild, wild);
   }
 
-  // If still nothing and category filter was active, retry across ALL categories
+  // 5. If still nothing and category filter was active, retry across ALL categories
   if (rows.length === 0 && categoryFilter) {
-    let globalSql = `
+    // 5a. Global B-Tree exact match
+    const globalExactSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
-      WHERE (content_md != '' OR brief_md != '')
-        AND (LOWER(title) = ? OR LOWER(title_en) = ? OR aliases LIKE ? OR title LIKE ? OR title_en LIKE ? OR url LIKE ?)
+      WHERE (LOWER(title) = ? OR LOWER(title_en) = ? OR LOWER(anchor) = ?)
+        AND (content_md != '' OR brief_md != '')
       ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6
     `;
-    const wild = `%${qTrim}%`;
-    rows = db.prepare(globalSql).all(qLower, qLower, `%${qLower}%`, wild, wild, wild);
+    rows = prepareCached(db, globalExactSql).all(qLower, qLower, qLower);
+
+    // 5b. Global substring match
+    if (rows.length === 0) {
+      const globalSubSql = `
+        SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
+        FROM entries
+        WHERE (content_md != '' OR brief_md != '')
+          AND (aliases LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR title_en LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')
+        ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6
+      `;
+      const wild = `%${qEscaped}%`;
+      rows = prepareCached(db, globalSubSql).all(`%${qLowerEscaped}%`, wild, wild, wild);
+    }
   }
 
   // Found matching result!
@@ -494,7 +582,7 @@ function querySqlite(command, query, isBrief, options = {}) {
     }
 
     console.log(`${colors.green}=== 找到条目: 【${titleDisp}】 ${editionTag} ===${colors.reset}`);
-    console.log(`${colors.dim}来源: references/rules_source/${best.url}${best.anchor ? ' #' + best.anchor : ''}${colors.reset}\n`);
+    console.log(`${colors.dim}来源: 5echm/${best.url}${best.anchor ? ' #' + best.anchor : ''}${colors.reset}\n`);
 
     if (isBrief) {
       // AI Agent dense format
@@ -502,12 +590,13 @@ function querySqlite(command, query, isBrief, options = {}) {
       console.log(best.brief_md || best.content_md.slice(0, 300));
     } else {
       // Full Markdown display
-      const lines = (best.content_md || best.brief_md || '').split('\n');
-      if (lines.length > 300) {
+      const fullText = best.content_md || best.brief_md || '';
+      const lines = fullText.split('\n');
+      if (!isFull && lines.length > 300) {
         console.log(lines.slice(0, 300).join('\n'));
-        console.log(`\n${colors.dim}... [内容已部分折叠，完整内容请查阅 references/rules_source/${best.url}]${colors.reset}`);
+        console.log(`\n${colors.dim}... [内容已部分折叠，完整内容请添加 --full 参数查阅 (${best.url})]${colors.reset}`);
       } else {
-        console.log(best.content_md || best.brief_md);
+        console.log(fullText);
       }
     }
 
@@ -522,31 +611,70 @@ function querySqlite(command, query, isBrief, options = {}) {
     return true;
   }
 
-  return null;
+  if (options.json) {
+    return { found: false, command, query };
+  }
+  console.log(`${colors.red}未找到与 "${query}" 匹配的条目。${colors.reset}`);
+  return false;
 }
 
 // ----------------------------------------------------
-// Fallback JSON Engine (If SQLite DB is missing)
+// Fallback JSON Engine (Only used if SQLite DB is missing)
 // ----------------------------------------------------
 
+let cachedFallbackIndex = null;
+function getFallbackIndex() {
+  if (cachedFallbackIndex) return cachedFallbackIndex;
+  if (!fs.existsSync(indexFile)) return null;
+  cachedFallbackIndex = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+  return cachedFallbackIndex;
+}
+
 function queryFallback(command, query, isBrief, options = {}) {
-  if (!fs.existsSync(indexFile)) {
+  const index = getFallbackIndex();
+  if (!index) {
     if (options.json) return { found: false, error: 'Database and index not found' };
     console.error(`${colors.red}未找到数据库或索引文件。请先运行 'node scripts/build-db.js'。${colors.reset}`);
     return null;
   }
-  const index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-  const qLower = (query || '').toLowerCase().trim();
 
-  let matches = index.filter(t => t.title.toLowerCase() === qLower || 
-    (t.titleEn && t.titleEn.toLowerCase() === qLower) ||
-    (t.aliases && t.aliases.some(a => a.toLowerCase() === qLower))
-  );
+  const rawTrim = (query || '').trim();
+  if (!rawTrim || !/[a-zA-Z0-9\u4e00-\u9fa5]/.test(rawTrim)) {
+    if (options.json) return { found: false, command, query: rawTrim };
+    return false;
+  }
 
-  if (matches.length === 0) {
-    matches = index.filter(t => t.title.toLowerCase().includes(qLower) || 
-      (t.titleEn && t.titleEn.toLowerCase().includes(qLower))
+  // 0. Class features direct map
+  const classFeatRes = resolveClassFeature(rawTrim, isBrief, options);
+  if (classFeatRes) return classFeatRes;
+
+  // 1. Vernacular mapping
+  const { activeCmd, resolvedQuery: qTrim } = resolveVernacular(command, rawTrim);
+  const qLower = qTrim.toLowerCase();
+
+  // Filter out empty URL nodes
+  const validEntries = index.filter(t => Boolean(t && t.title && t.url));
+  const categoryPool = validEntries.filter(t => matchesCategoryJs(t.category, t.url, activeCmd));
+
+  const searchPool = (pool) => {
+    let matches = pool.filter(t =>
+      t.title.toLowerCase() === qLower ||
+      (t.titleEn && t.titleEn.toLowerCase() === qLower) ||
+      (t.aliases && t.aliases.some(a => a.toLowerCase() === qLower))
     );
+    if (matches.length === 0) {
+      matches = pool.filter(t =>
+        t.title.toLowerCase().includes(qLower) ||
+        (t.titleEn && t.titleEn.toLowerCase().includes(qLower)) ||
+        (t.aliases && t.aliases.some(a => a.toLowerCase().includes(qLower)))
+      );
+    }
+    return matches;
+  };
+
+  let matches = searchPool(categoryPool);
+  if (matches.length === 0 && categoryPool.length !== validEntries.length) {
+    matches = searchPool(validEntries);
   }
 
   if (matches.length > 0) {
@@ -562,7 +690,7 @@ function queryFallback(command, query, isBrief, options = {}) {
           edition: best.edition || '5e',
           url: best.url || '',
           anchor: best.anchor || '',
-          brief: best.title,
+          brief: `[${best.category || 'general'}] ${best.title}`,
           content: ''
         },
         related: matches.slice(1, 6).map(m => ({
@@ -574,7 +702,7 @@ function queryFallback(command, query, isBrief, options = {}) {
       };
     }
     console.log(`${colors.green}=== 找到条目 (JSON降级): 【${best.title}】 ===${colors.reset}\n`);
-    console.log(`来源: references/rules_source/${best.url}`);
+    console.log(`来源: 5echm/${best.url}`);
     return true;
   }
 
@@ -582,25 +710,50 @@ function queryFallback(command, query, isBrief, options = {}) {
     return { found: false, command, query };
   }
   console.log(`${colors.red}未找到与 "${query}" 匹配的条目。${colors.reset}`);
-  return null;
+  return false;
 }
 
 /**
- * Programmatic lookup API for Agent and In-Process Tools (<0.2ms)
+ * Programmatic lookup API for Agent and In-Process Tools
  */
 export function lookup(command, query, options = {}) {
   const isBrief = Boolean(options.brief || options.agent || options.b || options.stat);
   const isJson = Boolean(options.json || options.j);
-  const safeOpts = { ...options, brief: isBrief, json: isJson };
+  const isFull = Boolean(options.full || options.f);
+  const safeOpts = { ...options, brief: isBrief, json: isJson, full: isFull };
 
-  const sqlRes = querySqlite(command, query, isBrief, safeOpts);
-  if (sqlRes) return sqlRes;
+  const normalizedCmd = String(command || 'search').trim().toLowerCase();
+  if (!VALID_COMMANDS.has(normalizedCmd)) {
+    const errMsg = `未知检索命令: "${command}"。可用命令: ${[...VALID_COMMANDS].join(', ')}`;
+    if (isJson) {
+      return { found: false, error: errMsg, command, query };
+    }
+    console.error(`${colors.red}错误: ${errMsg}${colors.reset}`);
+    return false;
+  }
 
-  const fbRes = queryFallback(command, query, isBrief, safeOpts);
-  if (fbRes) return fbRes;
+  const qStr = String(query ?? '').trim();
+  if (!qStr) {
+    const errMsg = '请提供非空查询关键词';
+    if (isJson) {
+      return { found: false, error: errMsg, command: normalizedCmd, query: '' };
+    }
+    console.error(`${colors.red}错误: ${errMsg}${colors.reset}`);
+    return false;
+  }
+
+  const sqlRes = querySqlite(normalizedCmd, qStr, isBrief, safeOpts);
+  if (sqlRes !== null) {
+    return sqlRes;
+  }
+
+  const fbRes = queryFallback(normalizedCmd, qStr, isBrief, safeOpts);
+  if (fbRes !== null) {
+    return fbRes;
+  }
 
   if (isJson) {
-    return { found: false, command, query };
+    return { found: false, command: normalizedCmd, query: qStr };
   }
   return false;
 }
@@ -634,15 +787,19 @@ function cli() {
   }
 
   if (cleanArgs.length === 0) {
-    console.error(`${colors.red}错误: 请提供查询关键词。${colors.reset}`);
+    console.error(`${colors.red}错误: 请提供查询命令与关键词。${colors.reset}`);
     printHelp();
     process.exit(1);
   }
 
   const command = cleanArgs[0].toLowerCase();
-  const query = cleanArgs.slice(1).join(' ').trim();
+  if (!VALID_COMMANDS.has(command)) {
+    console.error(`${colors.red}错误: 未知检索命令 "${command}"。可用命令: ${[...VALID_COMMANDS].join(', ')}${colors.reset}`);
+    process.exit(1);
+  }
 
-  if (!query && command !== 'search') {
+  const query = cleanArgs.slice(1).join(' ').trim();
+  if (!query) {
     console.error(`${colors.red}错误: 请提供查询关键词。${colors.reset}`);
     printHelp();
     process.exit(1);
@@ -665,4 +822,3 @@ const isMain = process.argv[1] && (
 if (isMain) {
   cli();
 }
-

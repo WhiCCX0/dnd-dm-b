@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 package-lock.json
 
@@ -8,6 +8,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .temp*
+*.tmp
+*.bak
+
+# SQLite journals & raw source files
+*.db-journal
+*.db-wal
+*.db-shm
+references/rules_source/
+*.wcp
 
 # Audio temporary files
 *.mp3
