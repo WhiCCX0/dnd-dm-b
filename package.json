@@ -7,6 +7,7 @@
   "scripts": {
     "lookup": "node scripts/lookup.js",
     "build-index": "node scripts/build-index.js",
+    "build-db": "node scripts/build-db.js",
     "roll": "node scripts/roll-dice.js",
     "state": "node scripts/state.js",
     "test": "node --test test/*.test.js"

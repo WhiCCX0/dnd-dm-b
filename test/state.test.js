@@ -184,3 +184,32 @@ test('state - 遭遇战清理与 HUD 怪物列表呈现 (mob-clear & HUD)', () =
   assert.equal(state.status.round, 0);
 });
 
+test('state - HUD 增量算式防漂移回显、临时生命不叠加取高值与长休力竭逐层递减', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+
+  // 临时生命不叠加，取较高值
+  updateState(TEST_CAMPAIGN, { tempHp: 5 });
+  updateState(TEST_CAMPAIGN, { tempHp: 3 });
+  let state = getState(TEST_CAMPAIGN);
+  assert.equal(state.character.hp.temp, 5, '较低的临时生命不应覆盖较高的现有临时生命');
+
+  updateState(TEST_CAMPAIGN, { tempHp: 0 });
+  state = getState(TEST_CAMPAIGN);
+  assert.equal(state.character.hp.temp, 0, '传 0 可显式清空临时生命');
+
+  // 扣血附带原因并在 HUD 中回显增量算式
+  updateState(TEST_CAMPAIGN, { hp: '-4', reason: '狼爪', addCondition: '力竭 2' });
+  state = getState(TEST_CAMPAIGN);
+  const hud = generateHud(state, 'line');
+  assert.ok(hud.includes('8/12 (-4 狼爪)'), 'HUD 应包含显式增量算式 (-4 狼爪)');
+
+  // 长休消除 1 层力竭 (力竭 2 -> 力竭 1)
+  state = applyRest(TEST_CAMPAIGN, 'long');
+  assert.ok(state.status.conditions.includes('力竭 1'), '长休后力竭 2 应降为力竭 1');
+
+  // 再次长休彻底消除力竭 1
+  state = applyRest(TEST_CAMPAIGN, 'long');
+  assert.ok(!state.status.conditions.some(c => c.includes('力竭')), '再次长休后力竭 1 应彻底消除');
+});
+
+

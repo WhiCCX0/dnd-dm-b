@@ -1,58 +1,57 @@
-# Brother Vondal - Hill Dwarf Cleric (Level 1)
+# 冯达尔修士 (Brother Vondal) - 丘陵矮人生命牧师 (1级)
 
-## Overview
-- **Species:** Hill Dwarf (2024: Darkvision 120 ft., Dwarven Resilience - Poison resist & Adv on poison saves, Dwarven Toughness - +1 HP per level)
-- **Class:** Cleric (Level 1)
-- **Subclass / Divine Order:** Protector (Martial Weapon training and Heavy Armor training)
-- **Background:** Acolyte (+2 WIS, +1 CON, Insight, Religion, Calligrapher's Supplies, Origin Feat: Magic Initiate - Cleric)
-- **Alignment:** Lawful Good
-- **Heroic Inspiration:** [ ]
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 丘陵矮人 (Hill Dwarf, 2024新规：黑暗视觉 120 尺；**矮人韧性 Dwarven Resilience** — 毒素伤害抗性且对抗中毒豁免具优势；**矮人坚韧 Dwarven Toughness** — 最大生命值每级额外 +1)
+- **职业 (Class)：** 牧师 (Cleric, 1级，生命领域路线)
+- **神圣使命 (Divine Order)：** 守护者 (Protector：获得军用武器熟练与**重甲训练**)
+- **背景 (Background)：** 侍僧 (Acolyte：感知 +2、体质 +1，洞悉与宗教熟练，书法工具熟练，起源专长：**魔法学徒：牧师 Magic Initiate**)
+- **阵营 (Alignment)：** 守序善良 (Lawful Good)
+- **英雄激励 (Heroic Inspiration)：** `[ ]`
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 14 | **+2** | +2 |
-| **DEX** | 10 | **+0** | +0 |
-| **CON** | 16 | **+3** | +3 |
-| **INT** | 10 | **+0** | +0 |
-| **WIS** | 16 | **+3** | **+5** (Proficient) |
-| **CHA** | 10 | **+0** | **+2** (Proficient) |
+| **力量 (STR)** | 14 | **+2** | +2 |
+| **敏捷 (DEX)** | 10 | **+0** | +0 |
+| **体质 (CON)** | 16 | **+3** | +3 |
+| **智力 (INT)** | 10 | **+0** | +0 |
+| **感知 (WIS)** | 16 | **+3** | **+5** (熟练) |
+| **魅力 (CHA)** | 10 | **+0** | **+2** (熟练) |
 
-*Proficiency Bonus:* **+2** | *Speed:* **30 ft.** (Dwarves ignore heavy armor speed penalty) | *Armor Class (AC):* **18** (Chain Mail 16 + Shield +2) | *HP Max:* **12** (1d8 + 3 CON + 1 Dwarven Toughness)
-
----
-
-## Skills
-- **Insight:** +5 (WIS)
-- **Medicine:** +5 (WIS)
-- **Perception:** +5 (WIS)
-- **Religion:** +2 (INT)
-- *Passive Perception:* 15
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **30 尺** (无视重甲减速) ｜ *护甲等级 (AC)：* **18** (链甲 16 + 盾牌 2) ｜ *生命值上限 (HP Max)：* **11** (或 12，1d8 + 3 体质 + 矮人坚韧)
 
 ---
 
-## Spellcasting (Cleric)
-- **Spell Save DC:** 8 + PB (+2) + WIS (+3) = **13**
-- **Spell Attack Mod:** PB (+2) + WIS (+3) = **+5**
-- **Spell Slots (Level 1):** [ ] [ ] (Total: 2)
-
-### Cantrips (Unlimited)
-1. **Sacred Flame:** Flame-like radiance descends on a target within 60 ft. Dexterity save (DC 13) or take **1d8 Radiant** damage (ignores cover!).
-2. **Guidance:** Touch a willing creature. Add **1d4** to one ability check before or after rolling!
-3. **Spare the Dying:** Touch a living creature that has 0 HP to stabilize it immediately.
-4. **Light:** Cause an object to shed bright light in a 20-foot radius and dim light for an additional 20 feet for 1 hour.
-
-### Prepared Spells (4 Spells Prepared Daily)
-- [ ] **Cure Wounds:** Touch a creature to restore **2d8 + 3 HP** (2024 buff: now rolls 2d8 instead of 1d8!).
-- [ ] **Healing Word (Bonus Action):** Ranged heal within 60 ft. Restores **2d4 + 3 HP** as a bonus action!
-- [ ] **Guiding Bolt:** Ranged spell attack (+5 to hit, 120 ft.), deals **4d6 Radiant** damage, and the next attack roll made against the target before the end of your next turn has Advantage!
-- [ ] **Bless (Concentration):** Up to 3 creatures within 30 ft add **1d4** to all attack rolls and saving throws for up to 1 minute!
+## 三、技能熟练 (Skills)
+- **洞悉 (Insight)：** +5 (感知)
+- **医药 (Medicine)：** +5 (感知)
+- **察觉 (Perception)：** +5 (感知)
+- **宗教 (Religion)：** +2 (智力)
+- *被动察觉 (Passive Perception)：* 15
 
 ---
 
-## Equipment & Attacks
-- **Warhammer (Versatile):** +4 to hit, 1d8+2 bludgeoning (or 1d10+2 two-handed).
-  - *Weapon Mastery - Push:* Can push target up to 10 ft back on a hit.
-- **Chain Mail** (AC 16), **Shield** (+2 AC), Holy Symbol (Silver amulet of the Dawn), Priest's Pack, Holy Water flask, 15 GP.
+## 四、神圣施法能力 (Spellcasting - Cleric)
+- **法术豁免 DC：** 8 + 熟练(+2) + 感知(+3) = **13**
+- **法术攻击加值：** 熟练(+2) + 感知(+3) = **+5**
+- **1 环法术位 (Spell Slots)：** `[●] [●]` (共 2 个)
+
+### 已知戏法 (Cantrips｜0环无限施放)
+1. **圣火术 (Sacred Flame)：** 射程 60 尺，神圣光辉从天而降（无视掩体加成！）。目标进行敏捷豁免 (DC 13)，失败受到 **`1d8` 光耀**伤害。
+2. **神导术 (Guidance)：** 触碰自愿盟友，使其在检定中额外加上 **`1d4`**！
+3. **维生术 (Spare the Dying)：** 触碰生命值为 0 的生物使其立即伤势稳定。
+4. **光亮术 (Light)：** 令物体发出 20 尺明亮光照与额外 20 尺微光，持续 1 小时。
+
+### 今日已准备 1 环法术 (Prepared Spells)
+- `[ ]` **治愈真言 (Healing Word｜附赠动作 Bonus Action)：** 射程 60 尺远程瞬抬！以【附赠动作】为可见盟友恢复 **`2d4 + 3`** 点生命值（2024新规翻倍至 2d4）！
+- `[ ]` **疗伤术 (Cure Wounds)：** 触碰生物恢复 **`2d8 + 3`** 点生命值（2024新规由 1d8 强化为 2d8）！
+- `[ ]` **导引箭 (Guiding Bolt)：** 远程法术攻击 (**+5** 命中，射程 120 尺)，造成 **`4d6` 光耀**伤害，且下一次对该目标的攻击检定获得**优势**！
+- `[ ]` **祝福术 (Bless｜专注)：** 30 尺内至多 3 名盟友的所有攻击检定与豁免检定额外加上 **`1d4`**，持续 1 分钟！
+
+---
+
+## 五、武装与随身装备 (Equipment & Attacks)
+- **战锤 (Warhammer｜两用)：** 命中 **+4**，伤害 `1d8 + 2` 钝击（双手 `1d10 + 2`）。
+- **护甲与圣徽：** 链甲 (AC 16)、盾牌 (+2 AC)、黎明银质圣徽、牧师背包、圣水 x1、治疗药水 x1、**15 金币 (GP)**。

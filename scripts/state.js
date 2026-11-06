@@ -157,10 +157,12 @@ export function updateState(campaignName, updates = {}) {
 
   const logs = [];
 
-  // 1. HP Updates (with Temp HP absorption rules)
+  // 1. HP Updates (with Temp HP absorption rules & HUD delta formula tracking)
   if (updates.hp !== undefined) {
     const hpStr = String(updates.hp).trim();
     const hp = state.character.hp;
+    const prevHp = hp.current;
+    const reasonSuffix = updates.reason ? ` ${updates.reason}` : '';
 
     if (hpStr.startsWith('+') || hpStr.startsWith('-')) {
       const delta = parseInt(hpStr, 10);
@@ -170,25 +172,35 @@ export function updateState(campaignName, updates = {}) {
         if (hp.temp > 0) {
           if (hp.temp >= damage) {
             hp.temp -= damage;
+            hp.lastDelta = `-0 (临时HP抵扣${damage}${reasonSuffix})`;
             logs.push(`临时生命抵扣 ${damage} 点伤害 (剩余临时HP: ${hp.temp})`);
           } else {
             const remainder = damage - hp.temp;
             logs.push(`临时生命耗尽 (抵扣 ${hp.temp})，扣除实际生命 ${remainder} 点`);
             hp.temp = 0;
             hp.current = Math.max(0, hp.current - remainder);
+            hp.lastDelta = `-${prevHp - hp.current}${reasonSuffix}`;
           }
         } else {
           hp.current = Math.max(0, hp.current - damage);
+          hp.lastDelta = `-${prevHp - hp.current}${reasonSuffix}`;
           logs.push(`受到 ${damage} 点伤害 (当前HP: ${hp.current}/${hp.max})`);
         }
       } else {
         // Healing: cannot exceed max HP
-        const prev = hp.current;
         hp.current = Math.min(hp.max, hp.current + delta);
-        logs.push(`恢复 ${hp.current - prev} 点生命 (当前HP: ${hp.current}/${hp.max})`);
+        const healed = hp.current - prevHp;
+        hp.lastDelta = `+${healed}${reasonSuffix}`;
+        logs.push(`恢复 ${healed} 点生命 (当前HP: ${hp.current}/${hp.max})`);
       }
     } else {
       hp.current = Math.max(0, Math.min(hp.max, parseInt(hpStr, 10)));
+      const diff = hp.current - prevHp;
+      if (diff !== 0) {
+        hp.lastDelta = `${diff > 0 ? '+' : ''}${diff}${reasonSuffix}`;
+      } else {
+        delete hp.lastDelta;
+      }
       logs.push(`设置当前生命为 ${hp.current}/${hp.max}`);
     }
 
@@ -215,10 +227,14 @@ export function updateState(campaignName, updates = {}) {
     }
   }
 
-  // 2. Temp HP
+  // 2. Temp HP (D&D 5e/2024: Temp HP does not stack; take the higher value unless resetting to 0)
   if (updates.tempHp !== undefined) {
-    const val = parseInt(updates.tempHp, 10);
-    state.character.hp.temp = Math.max(0, val);
+    const val = Math.max(0, parseInt(updates.tempHp, 10));
+    if (val === 0) {
+      state.character.hp.temp = 0;
+    } else {
+      state.character.hp.temp = Math.max(state.character.hp.temp || 0, val);
+    }
     logs.push(`临时生命设置为 ${state.character.hp.temp}`);
   }
 
@@ -250,11 +266,16 @@ export function updateState(campaignName, updates = {}) {
       state.character.spellSlots[lvl] = { max: 1, current: 1 };
     }
     const slot = state.character.spellSlots[lvl];
+    const prevSlot = slot.current;
     if (changeStr.startsWith('+') || changeStr.startsWith('-')) {
       const delta = parseInt(changeStr, 10);
       slot.current = Math.max(0, Math.min(slot.max, slot.current + delta));
     } else {
       slot.current = Math.max(0, Math.min(slot.max, parseInt(changeStr, 10)));
+    }
+    const slotDiff = slot.current - prevSlot;
+    if (slotDiff !== 0) {
+      slot.lastDelta = `${slotDiff > 0 ? '+' : ''}${slotDiff}`;
     }
     logs.push(`${lvl}环法术位更新: ${slot.current}/${slot.max}`);
   }
@@ -358,10 +379,16 @@ export function applyRest(campaignName, restType = 'short') {
   if (!state) throw new Error(`未找到战役 "${campaignName}"`);
 
   if (restType === 'long') {
-    // 2024 Long Rest Rules: Full HP recovery, reset temp HP, recover all spell slots, recover half hit dice
+    // 2024 Long Rest Rules: Full HP recovery, reset temp HP, recover all spell slots, recover half hit dice, reduce exhaustion by 1
     const char = state.character;
+    const healed = char.hp.max - char.hp.current;
     char.hp.current = char.hp.max;
     char.hp.temp = 0;
+    if (healed > 0) {
+      char.hp.lastDelta = `+${healed} 长休恢复`;
+    } else {
+      delete char.hp.lastDelta;
+    }
 
     // Hit dice recovery: half max (min 1)
     const diceRecover = Math.max(1, Math.floor(char.hitDice.total / 2));
@@ -370,10 +397,26 @@ export function applyRest(campaignName, restType = 'short') {
     // Reset spell slots
     for (const lvl of Object.keys(char.spellSlots)) {
       char.spellSlots[lvl].current = char.spellSlots[lvl].max;
+      delete char.spellSlots[lvl].lastDelta;
     }
 
-    // Remove temporary negative conditions
-    state.status.conditions = state.status.conditions.filter(c => !['浴血', '中毒', '力竭'].includes(c));
+    // Remove temporary negative conditions & decrement multi-level Exhaustion (力竭) by 1
+    const nextConditions = [];
+    for (const c of state.status.conditions) {
+      if (['浴血', '中毒', '昏迷', '力竭', '力竭 1', '力竭1'].includes(c)) {
+        continue;
+      }
+      const exhMatch = c.match(/^力竭\s*(\d+)$/);
+      if (exhMatch) {
+        const nextLvl = parseInt(exhMatch[1], 10) - 1;
+        if (nextLvl >= 1) {
+          nextConditions.push(c.includes(' ') ? `力竭 ${nextLvl}` : `力竭${nextLvl}`);
+        }
+        continue;
+      }
+      nextConditions.push(c);
+    }
+    state.status.conditions = nextConditions;
 
     state.log.push({
       timestamp: new Date().toISOString(),
@@ -526,6 +569,7 @@ export function clearEncounter(campaignName) {
 export function generateHud(state, mode = 'line') {
   const char = state.character;
   const hp = char.hp;
+  const deltaStr = hp.lastDelta ? ` (${hp.lastDelta})` : '';
   const tempStr = hp.temp > 0 ? ` (+${hp.temp}临时)` : '';
   const bloodied = hp.current <= Math.floor(hp.max / 2) && hp.current > 0 ? ' [浴血]' : '';
   const inspStr = char.heroicInspiration ? ' [激励●]' : '';
@@ -542,14 +586,14 @@ export function generateHud(state, mode = 'line') {
 
   if (mode === 'line') {
     return `-----------------------------------------------------------------------------------------
-📊 队伍状态: [🩸${char.name}(Lv${char.level} ${char.class}) HP: ${hp.current}/${hp.max}${tempStr}${bloodied} | 🛡️AC: ${char.ac}${inspStr}${conds}] | 🎒剩余金币: ${state.inventory.gold}gp | 📍${state.status.location}${mobsLine}
+📊 队伍状态: [🩸${char.name}(Lv${char.level} ${char.class}) HP: ${hp.current}/${hp.max}${deltaStr}${tempStr}${bloodied} | 🛡️AC: ${char.ac}${inspStr}${conds}] | 🎒剩余金币: ${state.inventory.gold}gp | 📍${state.status.location}${mobsLine}
 -----------------------------------------------------------------------------------------`;
   }
 
   // Combat Dashboard mode
   const slotsText = Object.entries(char.spellSlots)
     .filter(([_, s]) => s.max > 0)
-    .map(([lvl, s]) => `${lvl}环: [${'●'.repeat(s.current)}${'○'.repeat(s.max - s.current)}]`)
+    .map(([lvl, s]) => `${lvl}环: [${'●'.repeat(s.current)}${'○'.repeat(s.max - s.current)}]${s.lastDelta ? ` (${s.lastDelta})` : ''}`)
     .join(' | ');
 
   let mobsDashboard = '';
@@ -564,7 +608,7 @@ export function generateHud(state, mode = 'line') {
 
   return `====================================== 角色行动仪表盘 ======================================
 [当前先攻者]: ${char.name} (${char.class} Lv${char.level}) | 战斗第 ${state.status.round || 1} 轮
-[生命状态]: 🩸 HP: ${hp.current}/${hp.max}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${conds}
+[生命状态]: 🩸 HP: ${hp.current}/${hp.max}${deltaStr}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${conds}
 [法术位资源]: ${slotsText || '无施法资源'}
 [金币与物资]: 💰 ${state.inventory.gold}gp | 🎒 ${state.inventory.items.map(i => `${i.name}x${i.count}`).join(', ')}
 [当前位置与目标]: 📍 ${state.status.location} | 🎯 ${state.status.quest}${mobsDashboard}
@@ -596,7 +640,8 @@ ${colors.yellow}初始化选项 (init):${colors.reset}
 
 ${colors.yellow}更新选项 (update):${colors.reset}
   --hp <+/-N | N>       增减或设定当前 HP (自动计算临时生命抵扣、浴血与昏迷)
-  --temp-hp <N>         设定临时生命值
+  --reason <text>       HP 变动原因注记 (如: "狼爪"，在 HUD 中生成增量算式防漂移锁)
+  --temp-hp <N>         设定临时生命值 (自动遵循不叠加取高值规则，传 0 清零)
   --max-hp <N>          调整最大生命上限
   --ac <N>              调整防御等级 AC
   --inspiration <1|0>   增减英雄激励
@@ -604,7 +649,7 @@ ${colors.yellow}更新选项 (update):${colors.reset}
   --gold <+/-N | N>     增减或设定金币数量
   --add-item <name>     增加背包物品
   --remove-item <name>  移除或消耗背包物品
-  --add-condition <c>   附加异常状态 (如: 中毒, 受擒)
+  --add-condition <c>   附加异常状态 (如: 中毒, 受擒, 力竭 2)
   --remove-condition <c>解除异常状态
   --location <text>     更新当前地图与位置
   --quest <text>        更新当前主线/剧情目标
@@ -634,6 +679,7 @@ function parseCliArgs(args) {
     else if (arg === '--class') options.class = args[++i];
     else if (arg === '--level') options.level = args[++i];
     else if (arg === '--hp') options.hp = args[++i];
+    else if (arg === '--reason') options.reason = args[++i];
     else if (arg === '--temp-hp') options.tempHp = args[++i];
     else if (arg === '--max-hp') options.maxHp = args[++i];
     else if (arg === '--ac') options.ac = args[++i];

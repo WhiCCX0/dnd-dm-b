@@ -1,4 +1,4 @@
-﻿# ADR 001: RPG 游玩体验提升与代码防劣化加固架构决策
+# ADR 001: RPG 游玩体验提升与代码防劣化加固架构决策
 
 - **状态**: 已接受 (Accepted)
 - **日期**: 2026-09-05
@@ -22,27 +22,24 @@
 ### 决策 1：遵循 Ponytail Rung 3 极简阶梯，全原生零外部依赖
 - 严禁引入任何第三方 npm 测试库（如 Jest、Mocha、Vitest）。
 - 直接利用 Node.js v24 运行时的原生能力：
-  - 数据库引擎：
-ode:sqlite (SQLite 3 + FTS5)
-  - 测试框架：
-ode:test + 
-ode:assert
+  - 数据库引擎：`node:sqlite` (SQLite 3 + FTS5)
+  - 测试框架：`node:test` + `node:assert`
 - 保障冷启动耗时接近 0ms，开箱即用，无外部脆弱网络依赖。
 
 ### 决策 2：提供进程内 ES 模块 API (In-Process Module API)
-- scripts/lookup.js 与 scripts/roll-dice.js 同时具备 CLI 运行入口与 ES 模块导出能力。
-- 导出纯函数 lookup(command, query, options) 与 oll(expression, options)。
+- `scripts/lookup.js` 与 `scripts/roll-dice.js` 同时具备 CLI 运行入口与 ES 模块导出能力。
+- 导出纯函数 `lookup(command, query, options)` 与 `roll(expression, options)`。
 - 在同进程内直接调用耗时仅 **0.2ms**，比 OS 进程启动提速 100 倍以上。
-- 增加 --json / options.json 模式，输出标准化结构数据，避免终端色彩转义码污染 Agent 上下文。
+- 增加 `--json` / `options.json` 模式，输出标准化结构数据，避免终端色彩转义码污染 Agent 上下文。
 
 ### 决策 3：消除 Anti-Slop 与加固安全边界
-- 彻底移除所有空 catch 块，代之以显式异常捕获与友好降级信息。
+- 彻底移除所有空 `catch` 块，代之以显式异常捕获与友好降级信息。
 - 加固 FTS5 词法清洗器：对所有查询词进行分词与转义，杜绝包含引号、星号或布尔操作符时的 SQLite 语法异常。
 - 所有 SQL 查询保持严格的参数化预编译绑定（Prepared Statements with Placeholders）。
 
 ### 决策 4：建立完整的 TDD 自动化回归测试套件
-- 建立 	est/lookup.test.js 与 	est/roll-dice.test.js。
-- 在 package.json 中定义标准 "test": "node --test test/*.test.js"。
+- 建立 `test/lookup.test.js`、`test/roll-dice.test.js`、`test/state.test.js` 与 `test/skill-gate.test.js`。
+- 在 `package.json` 中定义标准 `"test": "node --test test/*.test.js"`。
 - 覆盖精准点查、口语别名、紧凑模式、JSON 模式、异常注入与骰子运算全逻辑。
 
 ---

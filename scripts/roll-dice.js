@@ -112,11 +112,17 @@ function parseDiceExpression(expr) {
   // Check 4d6kh3 special syntax first (keep highest N)
   const khMatch = clean.match(/^(\d+)?d(\d+)kh(\d+)([+-]\d+)?$/i);
   if (khMatch) {
+    const numDice = parseInt(khMatch[1] || '1', 10);
+    const sides = parseInt(khMatch[2], 10);
+    const keepCount = parseInt(khMatch[3], 10);
+    if (numDice <= 0 || sides <= 0 || numDice > 100 || sides > 1000 || keepCount <= 0 || keepCount > numDice) {
+      throw new Error(`Dice count, sides, or keep count out of range in "${expr}"`);
+    }
     return {
       type: 'kh',
-      numDice: parseInt(khMatch[1] || '1', 10),
-      sides: parseInt(khMatch[2], 10),
-      keepCount: parseInt(khMatch[3], 10),
+      numDice,
+      sides,
+      keepCount,
       mod: parseInt(khMatch[4] || '0', 10)
     };
   }
@@ -178,9 +184,10 @@ function executeSingleRoll(expr, options) {
 
   const terms = parsed.terms;
   const diceTerms = terms.filter(t => t.type === 'dice');
+  const hasD20Check = diceTerms.some(t => t.sides === 20);
 
-  // 2. Simple single-dice expression (backward-compatible fast-path)
-  if (diceTerms.length === 1 && (terms.length === 1 || (terms.length === 2 && terms[1].type === 'mod'))) {
+  // 2. Simple single-dice expression (backward-compatible fast-path for positive single dice)
+  if (diceTerms.length === 1 && diceTerms[0].sign === 1 && (terms.length === 1 || (terms.length === 2 && terms[1].type === 'mod'))) {
     const diceTerm = diceTerms[0];
     let numDice = diceTerm.count;
     const sides = diceTerm.sides;
@@ -256,7 +263,8 @@ function executeSingleRoll(expr, options) {
       termResults.push({ type: 'mod', value: term.val });
     } else if (term.type === 'dice') {
       let numDice = term.count;
-      if (options.crit && term.sides !== 20) {
+      // Only double damage dice on critical hits (not bonus dice like 1d4 Bless on a d20 check)
+      if (options.crit && term.sides !== 20 && !hasD20Check) {
         numDice *= 2;
       }
 

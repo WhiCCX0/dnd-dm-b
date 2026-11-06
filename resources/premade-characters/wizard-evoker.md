@@ -1,60 +1,60 @@
-# Alistair of Oakhaven - Rock Gnome Wizard (Level 1)
+# 阿里斯泰尔 (Alistair of Oakhaven) - 岩侏儒塑能法师 (1级)
 
-## Overview
-- **Species:** Rock Gnome (2024: Gnomish Cunning - Adv on INT, WIS, CHA saving throws; Darkvision 60 ft.; Tinker ability)
-- **Class:** Wizard (Level 1)
-- **Background:** Sage (+2 INT, +1 CON, Arcana, History, Calligrapher's Supplies, Origin Feat: Magic Initiate - Wizard)
-- **Alignment:** Neutral Good
-- **Heroic Inspiration:** [ ]
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 岩侏儒 (Rock Gnome, 2024新规：**侏儒狡黠 Gnomish Cunning** — 智力、感知、魅力豁免检定全部具有优势；黑暗视觉 60 尺；发条微械制造能力)
+- **职业 (Class)：** 法师 (Wizard, 1级，塑能学派路线)
+- **背景 (Background)：** 智者 (Sage：智力 +2、体质 +1，奥秘与历史熟练，书法工具熟练，起源专长：**魔法学徒：法师 Magic Initiate**)
+- **阵营 (Alignment)：** 中立善良 (Neutral Good)
+- **英雄激励 (Heroic Inspiration)：** `[ ]`
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 8  | **-1** | -1 |
-| **DEX** | 14 | **+2** | +2 |
-| **CON** | 14 | **+2** | +2 |
-| **INT** | 16 | **+3** | **+5** (Proficient) |
-| **WIS** | 12 | **+1** | **+3** (Proficient) |
-| **CHA** | 10 | **+0** | +0 |
+| **力量 (STR)** | 8  | **-1** | -1 |
+| **敏捷 (DEX)** | 14 | **+2** | +2 |
+| **体质 (CON)** | 14 | **+2** | +2 |
+| **智力 (INT)** | 16 | **+3** | **+5** (熟练，法术豁免优势) |
+| **感知 (WIS)** | 12 | **+1** | **+3** (熟练，法术豁免优势) |
+| **魅力 (CHA)** | 10 | **+0** | +0 (法术豁免优势) |
 
-*Proficiency Bonus:* **+2** | *Speed:* **30 ft.** | *Armor Class (AC):* **12** (15 with *Mage Armor*) | *HP Max:* **8** (1d6 + 2 CON)
-
----
-
-## Skills
-- **Arcana:** +5 (INT)
-- **History:** +5 (INT)
-- **Investigation:** +5 (INT)
-- **Insight:** +3 (WIS)
-- *Passive Perception:* 11
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **30 尺** ｜ *护甲等级 (AC)：* **12** (施展《法师护甲》后为 **15**) ｜ *生命值上限 (HP Max)：* **8** (1d6 + 2 体质)
 
 ---
 
-## Spellcasting (Wizard)
-- **Spell Save DC:** 8 + PB (+2) + INT (+3) = **13**
-- **Spell Attack Mod:** PB (+2) + INT (+3) = **+5**
-- **Spell Slots (Level 1):** [ ] [ ] (Total: 2)
-- **Arcane Recovery:** Once per day upon finishing a Short Rest, regain 1 expended Level 1 spell slot.
-
-### Cantrips (Unlimited)
-1. **Fire Bolt:** Ranged spell attack (+5 to hit), range 120 ft., deals **1d10 Fire** damage. Ignites flammable objects.
-2. **Mage Hand:** Create a spectral hand to manipulate objects, open doors, or carry up to 10 lbs within 30 ft.
-3. **Prestidigitation:** Minor magic tricks, sensory effects, lighting/snuffing torches, cleaning/soiling objects.
-4. **Ray of Frost (from Magic Initiate):** Ranged spell attack (+5 to hit), 60 ft., deals **1d8 Cold** and reduces target speed by 10 ft.
-
-### Prepared Spells (4 Spells Prepared Daily)
-- [ ] **Mage Armor:** Touch willing creature without armor; AC becomes 13 + Dex mod (15 for Alistair) for 8 hours.
-- [ ] **Magic Missile:** 3 glowing darts of magical force automatically hit targets within 120 ft., dealing 1d4+1 Force damage each (total **3d4 + 3**). No attack roll or saving throw needed!
-- [ ] **Shield (Reaction):** +5 bonus to AC until start of your next turn when hit by an attack, and immune to Magic Missile.
-- [ ] **Sleep:** Range 90 ft., 5-foot-radius sphere. Targets must make Wisdom save or gain Incapacitated/Unconscious condition for 1 minute or until damaged!
-
-### Rituals in Spellbook (Can cast without consuming slots by adding 10 minutes)
-- **Detect Magic:** Detect presence of magic and identify school within 30 ft.
-- **Identify:** Learn properties and attunement requirements of a magic item.
+## 三、技能熟练 (Skills)
+- **奥秘 (Arcana)：** +5 (智力)
+- **历史 (History)：** +5 (智力)
+- **调查 (Investigation)：** +5 (智力)
+- **洞悉 (Insight)：** +3 (感知)
+- *被动察觉 (Passive Perception)：* 11
 
 ---
 
-## Equipment
-Quarterstaff (+1 to hit, 1d6-1 bludgeoning), Arcane Focus (Carved Crystal Orb), Spellbook, Scholar's Pack, Tinker's tools, Ink and quill, Small pocket notebook, 10 GP.
+## 四、奥术施法能力 (Spellcasting - Wizard)
+- **法术豁免 DC：** 8 + 熟练(+2) + 智力(+3) = **13**
+- **法术攻击加值：** 熟练(+2) + 智力(+3) = **+5**
+- **1 环法术位 (Spell Slots)：** `[●] [●]` (共 2 个)
+- **奥术回想 (Arcane Recovery)：** 每日一次，在完成短休时可立即恢复 **1 个**已消耗的 1 环法术位。
+
+### 已知戏法 (Cantrips｜0环无限施放)
+1. **火焰箭 (Fire Bolt)：** 远程法术攻击 (**+5** 命中)，射程 120 尺，造成 **`1d10` 火焰**伤害，可引燃易燃物。
+2. **冷冻射线 (Ray of Frost｜来自魔法学徒)：** 远程法术攻击 (**+5** 命中)，射程 60 尺，造成 **`1d8` 冷冻**伤害并使目标速度减少 10 尺。
+3. **法师之手 (Mage Hand)：** 在 30 尺内凝聚幽灵之手，隔空操纵物体、开门或探查机关（承重 10 磅）。
+4. **奇术伎俩 (Prestidigitation)：** 点燃/熄灭火把、制造感官幻象、清洁或调味物品。
+
+### 今日已准备 1 环法术 (Prepared Spells)
+- `[ ]` **睡眠术 (Sleep)：** 射程 90 尺，半径 5 尺球形区域。区域内生物进行感知豁免 (DC 13)，失败则陷入【失能/昏迷】沉睡状态！
+- `[ ]` **魔法飞弹 (Magic Missile)：** 发射 3 枚必中力场飞弹（射程 120 尺），无需检定自动命中，每枚造成 `1d4 + 1` 力场伤害（总计 **`3d4 + 3`**）！
+- `[ ]` **护盾术 (Shield｜反应 Reaction)：** 当你被攻击命中或成为魔法飞弹目标时，以【反应】施展，使你的 **AC 瞬间 +5**（直至下回合开始）并免疫魔法飞弹！
+- `[ ]` **法师护甲 (Mage Armor)：** 触碰无甲目标，使其基础 AC 变为 `13 + 敏捷调整值`（阿里斯泰尔为 **AC 15**），持续 8 小时。
+
+### 法术书仪式法术 (Rituals｜多花10分钟免耗法术位施展)
+- **侦测魔法 (Detect Magic)：** 感知 30 尺内的魔法灵光并辨识学派。
+- **鉴定术 (Identify)：** 触摸魔法物品即可彻底知晓其属性、充能与同调要求。
+
+---
+
+## 五、随身装备与财富 (Equipment)
+长棍 (Quarterstaff，命中 +1，伤害 1d6-1 钝击)、奥术法器（雕花水晶球）、精装法术书、学者背包、书法工具、墨水与鹅毛笔、随身研究笔记、治疗药水 x1、**10 金币 (GP)**。

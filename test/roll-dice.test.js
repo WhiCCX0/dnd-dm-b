@@ -84,3 +84,15 @@ test('roll - 复合减益检定 (1d20+5-1d4 灾祸术扣除)', () => {
   assert.ok(res.total >= 2 && res.total <= 24);
 });
 
+test('roll - 负号单骰与 kh 边界校验及 d20 检定不翻倍增益骰', () => {
+  const neg = roll('-1d4+5');
+  assert.ok(neg.total >= 1 && neg.total <= 4, '-1d4+5 结果应在 1 到 4 之间');
+
+  assert.throws(() => roll('999d6kh3'), /out of range/);
+  assert.throws(() => roll('4d6kh5'), /out of range/);
+
+  const checkWithBless = roll('1d20+5+1d4', { crit: true });
+  assert.equal(checkWithBless.rolls.length, 2, '含 d20 的检定公式在传入 --crit 时不应将祝福术 1d4 翻倍');
+});
+
+

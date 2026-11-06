@@ -341,13 +341,15 @@ function querySqlite(command, query, isBrief, options = {}) {
       FROM entries
       WHERE (category = 'module' OR url LIKE '%模组%')
         AND (title LIKE ? OR title_en LIKE ? OR aliases LIKE ? OR url LIKE ?)
-      ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC
+      ORDER BY (CASE WHEN content_md != '' THEN 0 ELSE 1 END), (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC
       LIMIT 20
     `;
     const wildcard = `%${qTrim}%`;
     const rows = db.prepare(modSql).all(wildcard, wildcard, wildcard, wildcard);
     if (rows.length > 0) {
-      const overview = rows.find(r => r.url.includes('介绍') || r.url.includes('总览') || r.url.includes('第一章') || r.url.endsWith('.htm')) || rows[0];
+      const nonEmptyRows = rows.filter(r => r.content_md || r.brief_md);
+      const pool = nonEmptyRows.length > 0 ? nonEmptyRows : rows;
+      const overview = pool.find(r => r.url.includes('介绍') || r.url.includes('总览') || r.url.includes('第一章') || r.url.endsWith('.htm')) || pool[0];
       if (options.json) {
         return {
           found: true,
@@ -384,23 +386,30 @@ function querySqlite(command, query, isBrief, options = {}) {
   let exactSql = `
     SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
     FROM entries
-    WHERE (LOWER(title) = ? OR LOWER(title_en) = ? OR LOWER(anchor) = ? OR aliases LIKE ?)
+    WHERE (content_md != '' OR brief_md != '')
+      AND (
+        LOWER(title) = ?
+        OR LOWER(title_en) = ?
+        OR LOWER(anchor) = ?
+        OR (', ' || LOWER(aliases) || ', ') LIKE ?
+      )
   `;
   if (categoryFilter) exactSql += ` AND ${categoryFilter}`;
   exactSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
 
-  let rows = db.prepare(exactSql).all(qLower, qLower, qLower, `%${qLower}%`);
+  let rows = db.prepare(exactSql).all(qLower, qLower, qLower, `%, ${qLower}, %`);
 
   // 2. Starts with / Prefix match
   if (rows.length === 0) {
     let prefixSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
-      WHERE (LOWER(title) LIKE ? OR LOWER(title_en) LIKE ?)
+      WHERE (content_md != '' OR brief_md != '')
+        AND (LOWER(title) LIKE ? OR LOWER(title_en) LIKE ? OR LOWER(aliases) LIKE ?)
     `;
     if (categoryFilter) prefixSql += ` AND ${categoryFilter}`;
     prefixSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
-    rows = db.prepare(prefixSql).all(`${qLower}%`, `${qLower}%`);
+    rows = db.prepare(prefixSql).all(`${qLower}%`, `${qLower}%`, `%${qLower}%`);
   }
 
   // 3. FTS5 Full-Text Match
@@ -415,6 +424,7 @@ function querySqlite(command, query, isBrief, options = {}) {
           FROM entries_fts f
           JOIN entries e ON f.rowid = e.id
           WHERE entries_fts MATCH ?
+            AND (e.content_md != '' OR e.brief_md != '')
         `;
         if (categoryFilter) ftsSql += ` AND ${categoryFilter}`;
         ftsSql += ` ORDER BY (CASE WHEN e.edition = '2024' THEN 1 ELSE 2 END), rank LIMIT 6`;
@@ -432,7 +442,8 @@ function querySqlite(command, query, isBrief, options = {}) {
     let subSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
-      WHERE (title LIKE ? OR title_en LIKE ? OR aliases LIKE ? OR url LIKE ?)
+      WHERE (content_md != '' OR brief_md != '')
+        AND (title LIKE ? OR title_en LIKE ? OR aliases LIKE ? OR url LIKE ?)
     `;
     if (categoryFilter) subSql += ` AND ${categoryFilter}`;
     subSql += ` ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6`;
@@ -445,11 +456,12 @@ function querySqlite(command, query, isBrief, options = {}) {
     let globalSql = `
       SELECT id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md
       FROM entries
-      WHERE (LOWER(title) = ? OR LOWER(title_en) = ? OR aliases LIKE ? OR title LIKE ? OR title_en LIKE ?)
+      WHERE (content_md != '' OR brief_md != '')
+        AND (LOWER(title) = ? OR LOWER(title_en) = ? OR aliases LIKE ? OR title LIKE ? OR title_en LIKE ? OR url LIKE ?)
       ORDER BY (CASE WHEN edition = '2024' THEN 1 ELSE 2 END), id ASC LIMIT 6
     `;
     const wild = `%${qTrim}%`;
-    rows = db.prepare(globalSql).all(qLower, qLower, `%${qLower}%`, wild, wild);
+    rows = db.prepare(globalSql).all(qLower, qLower, `%${qLower}%`, wild, wild, wild);
   }
 
   // Found matching result!

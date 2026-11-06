@@ -1,55 +1,55 @@
-# Lyra Shadowfoot - Wood Elf Rogue (Level 1)
+# 莱拉·影足 (Lyra Shadowfoot) - 木精灵盗贼游荡者 (1级)
 
-## Overview
-- **Species:** Wood Elf (2024: Speed 35 ft., Darkvision 60 ft., Fey Ancestry - Adv vs Charmed, Druidcraft cantrip)
-- **Class:** Rogue (Level 1)
-- **Background:** Criminal (+2 DEX, +1 CON, Stealth, Deception, Thieves' Tools, Origin Feat: Alert)
-- **Alignment:** Chaotic Good
-- **Heroic Inspiration:** [ ]
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 木精灵 (Wood Elf, 2024新规：移动速度 **35 尺**，黑暗视觉 60 尺，**精类血统 Fey Ancestry** — 对抗魅惑豁免具优势且免疫魔法睡眠，天生掌握戏法《德鲁伊伎俩 Druidcraft》)
+- **职业 (Class)：** 游荡者 (Rogue, 1级，盗贼路线)
+- **背景 (Background)：** 罪犯 (Criminal：敏捷 +2、体质 +1，隐匿与欺瞒熟练，盗贼工具熟练，起源专长：**警觉 Alert**)
+- **阵营 (Alignment)：** 混乱善良 (Chaotic Good)
+- **英雄激励 (Heroic Inspiration)：** `[ ]`
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 8  | **-1** | -1 |
-| **DEX** | 16 | **+3** | **+5** (Proficient) |
-| **CON** | 14 | **+2** | +2 |
-| **INT** | 13 | **+1** | **+3** (Proficient) |
-| **WIS** | 12 | **+1** | +1 |
-| **CHA** | 10 | **+0** | +0 |
+| **力量 (STR)** | 8  | **-1** | -1 |
+| **敏捷 (DEX)** | 16 | **+3** | **+5** (熟练) |
+| **体质 (CON)** | 14 | **+2** | +2 |
+| **智力 (INT)** | 13 | **+1** | **+3** (熟练) |
+| **感知 (WIS)** | 12 | **+1** | +1 |
+| **魅力 (CHA)** | 10 | **+0** | +0 |
 
-*Proficiency Bonus:* **+2** | *Speed:* **35 ft.** | *Armor Class (AC):* **14** (Leather Armor + Dex) | *HP Max:* **10** (1d8 + 2 CON)
-
----
-
-## Skills & Expertise
-- **Stealth (Expertise):** **+7** (Double Proficiency)
-- **Thieves' Tools (Expertise):** **+7** (Double Proficiency)
-- **Acrobatics:** +5 (DEX)
-- **Deception:** +2 (CHA)
-- **Investigation:** +3 (INT)
-- **Perception:** +3 (WIS)
-- *Passive Perception:* 13 | *Passive Stealth:* 17
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **35 尺** ｜ *护甲等级 (AC)：* **14** (皮甲 11 + 敏捷 3) ｜ *生命值上限 (HP Max)：* **9** (或 10，1d8 + 2 体质)
 
 ---
 
-## 2024 Weapon Mastery & Attacks
-Lyra has mastered 2 finesse weapons:
-1. **Dagger (Finesse, Light, Thrown 20/60):** +5 to hit. *Damage:* 1d4 + 3 Piercing.
-   - **Mastery - Nick:** You can make the extra offhand attack as part of the Attack action instead of using your Bonus Action!
-2. **Shortbow (Two-Handed, Range 80/320):** +5 to hit. *Damage:* 1d6 + 3 Piercing.
-   - **Mastery - Vex:** On a hit, you gain Advantage on your next attack roll against this target before the end of your next turn!
+## 三、技能与专精 (Skills & Expertise)
+- **隐匿 (Stealth｜专精 Expertise)：** **+7** (双倍熟练加值)
+- **盗贼工具 (Thieves' Tools｜专精 Expertise)：** **+7** (双倍熟练加值)
+- **体操 (Acrobatics)：** +5 (敏捷)
+- **欺瞒 (Deception)：** +2 (魅力)
+- **调查 (Investigation)：** +3 (智力)
+- **察觉 (Perception)：** +3 (感知)
+- *被动察觉 (Passive Perception)：* 13 ｜ *被动隐匿 (Passive Stealth)：* 17
 
 ---
 
-## Class Features & Feats
-- **Sneak Attack:** Once per turn, deal an extra **1d6** damage to one creature you hit with an attack roll if you have Advantage on the roll, or if an ally is within 5 feet of the target and you don't have Disadvantage.
-- **Thieves' Cant:** Secret language of rogues and sign gestures.
-- **Alert (Feat):** Add PB (+2) to Initiative (Total Initiative: **+5**!). Immediately after rolling Initiative, you can swap your initiative count with a willing ally.
-- **Fey Ancestry:** Advantage on saving throws against being Charmed; magic can't put you to sleep.
+## 四、2024 武器精通与攻击动作 (Weapon Mastery & Attacks)
+莱拉精通 2 种灵巧武器，可实现零附赠动作消耗的双刀连击或远程自造优势：
+1. **匕首 (Dagger｜灵巧、轻型、投掷 20/60 尺)：** 命中 **+5**，触及 5 尺。*伤害：* `1d4 + 3` 穿刺伤害。
+   - **精通词条 · 迅击 (Nick)：** 双持轻型武器时，你的副手额外攻击**无需消耗附赠动作**，直接作为主手【攻击】动作的一部分免费打出！
+2. **短弓 (Shortbow｜双手、射程 80/320 尺)：** 命中 **+5**。*伤害：* `1d6 + 3` 穿刺伤害。
+   - **精通词条 · 侵扰 (Vex)：** 命中目标并造成伤害后，你在下回合结束前对该目标的下一次攻击检定直接获得**优势 (Advantage)**（自动触发下一箭【偷袭】！）。
 
 ---
 
-## Equipment
-Leather Armor, 2 Daggers, Shortbow with quiver of 20 arrows, Thieves' Tools, Burglar's Pack, Crowbar, Dark clothes with hood, 15 GP.
+## 五、职业特性与专长 (Class Features & Feats)
+- **偷袭 (Sneak Attack)：** 每回合一次，当你用灵巧或远程武器命中目标，且本次攻击具有**优势**（或目标 5 尺内有未失能的盟友且你无劣势）时，额外造成 **`1d6`** 伤害。
+- **盗贼黑话 (Thieves' Cant)：** 掌握游荡者暗语、江湖切口与秘密符号。
+- **警觉 (Alert｜起源专长)：** 先攻检定额外加上熟练加值（总先攻加值高达 **+5**！）；且在投完先攻后，你可以立即与一名自愿盟友互换先攻顺位。
+- **精类血统 (Fey Ancestry)：** 对抗陷入【魅惑】状态的豁免检定具有优势，且魔法无法使你入睡。
+
+---
+
+## 六、随身装备与财富 (Equipment)
+皮甲 (Leather Armor)、匕首 x2、短弓与 20 支箭矢、盗贼工具 (Thieves' Tools)、窃贼背包、撬棍、深色连帽夜行衣、治疗药水 x1、**15 金币 (GP)**。

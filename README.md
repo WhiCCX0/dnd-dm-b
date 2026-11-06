@@ -104,30 +104,36 @@ dnd-dm-b/
 ├── README.md                         # B 版技能速查手册 (当前文档)
 ├── dm-guide.md                       # 2024 中文版 DM 执裁与战术全景指南
 ├── package.json                      # 命令与脚本定义
+├── docs/
+│   └── adr/
+│       └── 001-rpg-experience-and-code-hardening.md # 架构决策记录 (ADR 001)
 ├── references/
 │   ├── rules.db                      # 原生预编译 SQLite 规则库 (9,284 核心条目)
-│   ├── rules_source                  # 目录联结 (Directory Junction，零冗余链接 125MB 不全书)
-│   └── topics_index.json             # 预编译全书 8,356 条目高速 JSON 索引
+│   ├── session-zero-interface.md     # 官方 Session 0 极速开局三步引导接口
+│   └── topics_index.json             # 预编译全书高速 JSON 索引
 ├── scripts/
 │   ├── lookup.js                     # 核心点查引擎 (毫秒级提取 2024 规则与职业特性)
 │   ├── roll-dice.js                  # 跨平台复合骰子引擎 (纯原生 Node.js)
 │   ├── state.js                      # 战役状态持久化与实时 HUD 生成器 (含遭遇战怪物小队)
+│   ├── build-db.js                   # SQLite FTS5 数据库预编译构建器
 │   └── build-index.js                # 规则库索引构建脚本
 ├── sessions/                         # 战役历史与玩家状态存档目录
-├── test/                             # 自动化单元测试套件 (34 项自动化测试全绿)
+├── test/                             # 自动化单元测试套件 (全量自动化测试全绿)
 │   ├── lookup.test.js
 │   ├── roll-dice.test.js
+│   ├── skill-gate.test.js
 │   └── state.test.js
 ├── resources/
 │   ├── starter-adventure/
 │   │   ├── official-modules-guide.md # 官方 38 部经典模组 DM 启动指南 (《矿坑》《冰塔峰》等)
 │   │   ├── the-whispering-crypt.md   # 精品自创新手模组《低语地窖与暗影牙痕》
 │   │   └── adventure-generator.md    # 随机冒险与地下城生成表
-│   └── premade-characters/           # 6 套 2024 中文预设英雄卡
+│   └── premade-characters/           # 6 套 2024 中文预设英雄卡 (中英双语对照)
 └── templates/
     ├── character-sheet.md            # 中文 2024 标准角色卡模板
     ├── combat-tracker.md             # 战术战况与先攻追踪模板
     ├── hud-status-bar.md             # 极简 Markdown 实时状态栏规范
+    ├── novice-cheat-sheet.md         # 萌新冒险者一页纸速查卡
     ├── campaign-log.md               # 战役历史全量日志模板
     └── campaign-summary.md           # 战役状态单页摘要模板
 ```

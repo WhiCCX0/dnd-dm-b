@@ -1,57 +1,57 @@
-# Sir Therai - Gold Dragonborn Paladin (Level 1)
+# 瑟莱爵士 (Sir Theron / Sir Therai) - 金龙裔奉献圣武士 (1级)
 
-## Overview
-- **Species:** Gold Dragonborn (2024: Fire Resistance, Fire Breath weapon - 1d10 Fire damage in 15ft cone or 30ft line, DC 13 Dex save, PB uses per Long Rest; Darkvision 60 ft.)
-- **Class:** Paladin (Level 1 - gains spellcasting at level 1 in 2024 revised rules!)
-- **Background:** Noble (+2 STR, +1 CHA, History, Persuasion, Gaming Set, Origin Feat: Skilled)
-- **Alignment:** Lawful Good
-- **Heroic Inspiration:** [ ]
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 金龙裔 (Gold Dragonborn, 2024新规：**火焰抗性**；**炽烈龙息吐息武器 Breath Weapon** — 15 尺锥状或 30 尺线状喷吐，敏捷豁免 DC 12，造成 **`1d10` 火焰**伤害，每长休可用 2 次；黑暗视觉 60 尺)
+- **职业 (Class)：** 圣武士 (Paladin, 1级 — **2024 新规 1 级即解锁施法与神圣打击**，奉献誓言路线)
+- **背景 (Background)：** 贵族 (Noble：力量 +2、魅力 +1，历史与说服熟练，博弈工具熟练，起源专长：**博学多才 Skilled**)
+- **阵营 (Alignment)：** 守序善良 (Lawful Good)
+- **英雄激励 (Heroic Inspiration)：** `[ ]`
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 16 | **+3** | +3 |
-| **DEX** | 10 | **+0** | +0 |
-| **CON** | 14 | **+2** | +2 |
-| **INT** | 10 | **+0** | +0 |
-| **WIS** | 12 | **+1** | **+3** (Proficient) |
-| **CHA** | 15 | **+2** | **+4** (Proficient) |
+| **力量 (STR)** | 16 | **+3** | +3 |
+| **敏捷 (DEX)** | 10 | **+0** | +0 |
+| **体质 (CON)** | 14 | **+2** | +2 |
+| **智力 (INT)** | 10 | **+0** | +0 |
+| **感知 (WIS)** | 12 | **+1** | **+3** (熟练) |
+| **魅力 (CHA)** | 15 | **+2** | **+4** (熟练) |
 
-*Proficiency Bonus:* **+2** | *Speed:* **30 ft.** | *Armor Class (AC):* **18** (Chain Mail 16 + Shield +2) | *HP Max:* **12** (1d10 + 2 CON)
-
----
-
-## Skills
-- **Athletics:** +5 (STR)
-- **History:** +2 (INT)
-- **Insight:** +3 (WIS)
-- **Intimidation:** +4 (CHA)
-- **Persuasion:** +4 (CHA)
-- *Passive Perception:* 11
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **30 尺** ｜ *护甲等级 (AC)：* **16** (链甲 16，持盾时可达 **18**) ｜ *生命值上限 (HP Max)：* **12** (1d10 + 2 体质)
 
 ---
 
-## Paladin Features & Spellcasting (2024)
-- **Lay on Hands:** You have a healing pool of **5 HP**. As a Bonus Action, touch a creature to restore HP or expend 5 HP from the pool to cure Poisoned condition.
-- **Paladin Spellcasting (Level 1):**
-  - *Spell Save DC:* 8 + PB (+2) + CHA (+2) = **12**
-  - *Spell Attack Mod:* PB (+2) + CHA (+2) = **+4**
-  - *Spell Slots (Level 1):* [ ] [ ] (Total: 2)
-  - *Prepared Spells:*
-    - [ ] **Divine Smite:** Cast as a Bonus Action immediately after hitting with a melee weapon or Unarmed Strike. Deals extra **2d8 Radiant** damage (or 3d8 vs Fiends/Undead!).
-    - [ ] **Heroism:** A willing creature is immune to being Frightened and gains 2 temporary HP at the start of each of its turns.
+## 三、技能熟练 (Skills)
+- **运动 (Athletics)：** +5 (力量)
+- **历史 (History)：** +2 (智力)
+- **洞悉 (Insight)：** +3 (感知)
+- **威吓 (Intimidation)：** +4 (魅力)
+- **说服 (Persuasion)：** +4 (魅力)
+- *被动察觉 (Passive Perception)：* 11
 
 ---
 
-## 2024 Weapon Mastery & Attacks
-1. **Longsword:** +5 to hit. *Damage:* 1d8 + 3 Slashing.
-   - **Mastery - Sap:** Gives enemy Disadvantage on its next attack.
-2. **Javelin (Thrown 30/120):** +5 to hit. *Damage:* 1d6 + 3 Piercing.
-   - **Mastery - Slow:** Reduces target speed by 10 ft on a hit.
+## 四、圣武士特性与施法 (Paladin Features & Spellcasting - 2024)
+- **圣疗术 (Lay on Hands｜附赠动作)：** 拥有 **5 点**治疗池。以一个**附赠动作 (Bonus Action)** 触碰生物恢复对应生命值，或消耗 5 点立即解除【中毒】状态。
+- **1 级圣武士施法 (Paladin Spellcasting)：**
+  - *法术豁免 DC：* 8 + 熟练(+2) + 魅力(+2) = **12**
+  - *法术攻击加值：* 熟练(+2) + 魅力(+2) = **+4**
+  - *1 环法术位 (Spell Slots)：* `[●] [●]` (共 2 个)
+  - *今日已准备法术：*
+    - `[ ]` **神圣打击 / 至圣斩 (Divine Smite｜附赠动作)：** 当你用近战武器或徒手打击命中目标后，立即以【附赠动作】施展，额外造成 **`2d8` 光耀**伤害（对不死生物或邪魔为 **`3d8`**）！
+    - `[ ]` **英雄气概 (Heroism｜专注)：** 触碰自愿生物使其免疫【恐慌】，且在其每回合开始时获得 **2 点临时生命值**。
 
 ---
 
-## Equipment
-Chain Mail, Longsword, Shield, 3 Javelins, Priest's Pack, Holy Symbol, Signet Ring, Scroll of Pedigree, Fine clothes, 25 GP.
+## 五、2024 武器精通与攻击动作 (Weapon Mastery & Attacks)
+1. **长剑 (Longsword｜两用)：** 命中 **+5**，触及 5 尺。*伤害：* `1d8 + 3` 挥砍伤害（双手 `1d10 + 3`）。
+   - **精通词条 · 削弱 (Sap)：** 命中后，令敌人在下回合开始前的下一次攻击检定承受**劣势**。
+2. **标枪 (Javelin｜投掷 30/120 尺)：** 命中 **+5**。*伤害：* `1d6 + 3` 穿刺伤害。
+   - **精通词条 · 缓速 (Slow)：** 命中后将目标的移动速度减少 **10 尺**。
+
+---
+
+## 六、随身装备与财富 (Equipment)
+链甲 (Chain Mail)、长剑 (Longsword)、盾牌 (Shield)、标枪 x3、牧师背包、神圣纹章圣徽、家族纹章戒指、贵族谱系卷轴、华服、治疗药水 x1、**25 金币 (GP)**。

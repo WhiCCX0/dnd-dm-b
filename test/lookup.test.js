@@ -103,3 +103,10 @@ test('lookup - 2024 核心职业招牌机制特性直达 (偷袭, 动作如潮, 
   assert.match(rage.entry.brief, /野蛮人/);
 });
 
+test('lookup - 优先返回包含非空正文的条目 (避免命中空白目录树节点)', () => {
+  const res = lookup('search', '坠入阿弗纳斯', { brief: true, json: true });
+  assert.equal(res.found, true);
+  assert.ok(res.entry.content.length > 0 || res.entry.brief.length > 0, '返回的条目应包含实质内容而非空白目录节点');
+});
+
+

@@ -1,55 +1,55 @@
-# Valen Ironford - Human Fighter (Level 1)
+# 瓦伦·铁福德 (Valen Ironford) - 人类冠军战士 (1级)
 
-## Overview
-- **Species:** Human (2024: Resourceful - begins each day with Heroic Inspiration; Skillful - extra skill)
-- **Class:** Fighter (Level 1)
-- **Background:** Soldier (+2 STR, +1 CON, Athletics, Intimidation, Gaming Set, Origin Feat: Savage Attacker)
-- **Alignment:** Neutral Good
-- **Heroic Inspiration:** [x] Ready to use (Reroll any d20 roll!)
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 人类 (Human, 2024新规：**机敏 Resourceful** — 每日长休后自动获得【英雄激励】；**博学 Skillful** — 额外掌握 1 项技能熟练)
+- **职业 (Class)：** 战士 (Fighter, 1级，冠军武者路线)
+- **背景 (Background)：** 士兵 (Soldier：力量 +2、体质 +1，运动与威吓熟练，赌具熟练，起源专长：**凶猛攻击手 Savage Attacker**)
+- **阵营 (Alignment)：** 中立善良 (Neutral Good)
+- **英雄激励 (Heroic Inspiration)：** `[●]` 已就绪（可重骰任意一次 d20 检定！）
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 16 | **+3** | **+5** (Proficient) |
-| **DEX** | 13 | **+1** | +1 |
-| **CON** | 15 | **+2** | **+4** (Proficient) |
-| **INT** | 10 | **+0** | +0 |
-| **WIS** | 12 | **+1** | +1 |
-| **CHA** | 8  | **-1** | -1 |
+| **力量 (STR)** | 16 | **+3** | **+5** (熟练) |
+| **敏捷 (DEX)** | 13 | **+1** | +1 |
+| **体质 (CON)** | 15 | **+2** | **+4** (熟练) |
+| **智力 (INT)** | 10 | **+0** | +0 |
+| **感知 (WIS)** | 12 | **+1** | +1 |
+| **魅力 (CHA)** | 8  | **-1** | -1 |
 
-*Proficiency Bonus:* **+2** | *Speed:* **30 ft.** | *Armor Class (AC):* **16** (Chain Mail) | *HP Max:* **12** (1d10 + 2 CON)
-
----
-
-## Skills
-- **Athletics:** +5 (STR)
-- **Intimidation:** +1 (CHA)
-- **Perception:** +3 (WIS)
-- **Survival:** +3 (WIS)
-- *Passive Perception:* 13
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **30 尺** ｜ *护甲等级 (AC)：* **16** (链甲 16，若持盾可达 18) ｜ *生命值上限 (HP Max)：* **12** (1d10 + 2 体质)
 
 ---
 
-## 2024 Weapon Mastery & Attacks
-Valen has mastered 3 weapons with tactical properties:
-1. **Greatsword (Heavy, Two-Handed):** +5 to hit, reach 5 ft. *Damage:* 2d6 + 3 Slashing.
-   - **Mastery - Graze:** If you miss with this weapon, the target still takes damage equal to your Ability Modifier (**3 Slashing damage guaranteed even on a miss!**).
-2. **Longsword (Versatile):** +5 to hit, reach 5 ft. *Damage:* 1d8 + 3 (one-handed) or 1d10 + 3 (two-handed) Slashing.
-   - **Mastery - Sap:** On a hit, the target has Disadvantage on its next attack roll before the start of your next turn.
-3. **Heavy Crossbow (Ammunition, Heavy, Loading):** +3 to hit, range 100/400 ft. *Damage:* 1d10 + 1 Piercing.
-   - **Mastery - Push:** On a hit, you can push a Large or smaller creature up to 10 feet straight away from you.
+## 三、技能熟练 (Skills)
+- **运动 (Athletics)：** +5 (力量)
+- **威吓 (Intimidation)：** +1 (魅力)
+- **察觉 (Perception)：** +3 (感知)
+- **求生 (Survival)：** +3 (感知)
+- *被动察觉 (Passive Perception)：* 13
 
 ---
 
-## Class Features & Feats
-- **Fighting Style: Defense:** +1 bonus to Armor Class while wearing armor (included in AC 16).
-- **Second Wind:** As a Bonus Action, regain **1d10 + 1 HP**. You can use this **2 times per Short/Long Rest**.
-- **Savage Attacker (Feat):** Once per turn when you hit with a weapon, you can roll damage twice and use either result.
-- **Resourceful (Human):** Gain Heroic Inspiration after finishing a Long Rest.
+## 四、2024 武器精通与攻击动作 (Weapon Mastery & Attacks)
+瓦伦精通 3 种兼具爆发与控制的战术武器：
+1. **巨剑 (Greatsword｜重型、双手)：** 命中 **+5**，触及 5 尺。*伤害：* `2d6 + 3` 挥砍伤害。
+   - **精通词条 · 擦掠 (Graze)：** 若你的近战攻击**未命中**目标，该目标依然受到等同于你攻击属性调整值的伤害（**即使失手也保底造成 3 点挥砍伤害！**）。
+2. **长剑 (Longsword｜两用)：** 命中 **+5**，触及 5 尺。*伤害：* `1d8 + 3` (单手) 或 `1d10 + 3` (双手) 挥砍伤害。
+   - **精通词条 · 削弱 (Sap)：** 命中后，目标在你下回合开始前的下一次攻击检定承受**劣势 (Disadvantage)**。
+3. **重弩 (Heavy Crossbow｜弹药、重型、装填)：** 命中 **+3**，射程 100/400 尺。*伤害：* `1d10 + 1` 穿刺伤害。
+   - **精通词条 · 推离 (Push)：** 命中后，你可将大型或更小的目标自你处直线推离至多 **10 尺**。
 
 ---
 
-## Equipment
-Chain Mail (AC 16), Greatsword, Longsword, Heavy Crossbow with 20 bolts, Explorer's Pack, Soldier's Insignia, Deck of Cards, 10 GP.
+## 五、职业特性与专长 (Class Features & Feats)
+- **战斗风格 · 防御 (Defense)：** 穿戴护甲时护甲等级 (AC) 获得 +1 加值。
+- **回气 (Second Wind)：** 以一个**附赠动作 (Bonus Action)** 恢复 `1d10 + 1` 点生命值。每次短休或长休可使用 **2 次**。
+- **凶猛攻击手 (Savage Attacker｜起源专长)：** 每回合一次，当你用武器命中目标时，你可以投掷两次武器伤害骰并任选其一结算。
+- **机敏 (Resourceful｜人类特质)：** 每次完成长休后自动获得【英雄激励】。
+
+---
+
+## 六、随身装备与财富 (Equipment)
+链甲 (Chain Mail)、巨剑 (Greatsword)、长剑 (Longsword)、重弩与 20 支弩矢、探索者背包、军士徽章、纸牌赌具、治疗药水 x1、**10 金币 (GP)**。

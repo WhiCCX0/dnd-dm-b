@@ -109,3 +109,24 @@ test('gate - templates/hud-status-bar.md 增量算式防漂移锁规范', () => 
   assert.ok(content.includes('增量算式强制注记'), 'HUD 规范必须包含动态增量算式注记');
   assert.ok(content.includes('防漂移锁'), 'HUD 规范必须包含防漂移锁说明');
 });
+
+test('gate - resources/premade-characters 6 套 2024 中文预制角色卡中文化与完整性', () => {
+  const premadeDir = path.join(rootDir, 'resources', 'premade-characters');
+  const expectedFiles = [
+    { file: 'fighter-champion.md', name: '瓦伦' },
+    { file: 'rogue-thief.md', name: '莱拉' },
+    { file: 'wizard-evoker.md', name: '阿里斯泰尔' },
+    { file: 'cleric-life.md', name: '冯达尔' },
+    { file: 'paladin-devotion.md', name: '瑟莱' },
+    { file: 'bard-lore.md', name: '卡珊德拉' }
+  ];
+
+  for (const { file, name } of expectedFiles) {
+    const filePath = path.join(premadeDir, file);
+    assert.ok(fs.existsSync(filePath), `预制角色卡 ${file} 必须存在`);
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.ok(content.includes(name), `${file} 必须包含中文角色名 ${name}`);
+    assert.ok(content.includes('六维属性与豁免'), `${file} 必须包含中文化属性表`);
+  }
+});
+

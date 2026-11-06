@@ -1,61 +1,61 @@
-# Cassandra Melody - Tiefling Bard (Level 1)
+# 卡珊德拉·梅洛迪 (Cassandra Melody) - 提夫林逸闻诗人 (1级)
 
-## Overview
-- **Species:** Tiefling (2024: Darkvision 60 ft., Fire Resistance, Otherworldly Presence - Thaumaturgy cantrip)
-- **Class:** Bard (Level 1)
-- **Background:** Entertainer (+2 CHA, +1 DEX, Acrobatics, Performance, Disguise Kit, Origin Feat: Musician)
-- **Alignment:** Chaotic Good
-- **Heroic Inspiration:** [ ]
+## 一、角色概览 (Overview)
+- **种族 (Species)：** 提夫林 (Tiefling, 2024新规：黑暗视觉 60 尺，**火焰伤害抗性**，异界威仪 — 天生掌握戏法《奇术 Thaumaturgy》)
+- **职业 (Class)：** 吟游诗人 (Bard, 1级，逸闻学院路线)
+- **背景 (Background)：** 艺人 (Entertainer：魅力 +2、敏捷 +1，体操与表演熟练，易容工具熟练，起源专长：**音乐家 Musician**)
+- **阵营 (Alignment)：** 混乱善良 (Chaotic Good)
+- **英雄激励 (Heroic Inspiration)：** `[ ]`
 
 ---
 
-## Ability Scores
-| Ability | Score | Mod | Save |
+## 二、六维属性与豁免 (Ability Scores)
+| 属性 | 数值 | 调整值 | 豁免加值 |
 | :--- | :---: | :---: | :---: |
-| **STR** | 8  | **-1** | -1 |
-| **DEX** | 14 | **+2** | **+4** (Proficient) |
-| **CON** | 13 | **+1** | +1 |
-| **INT** | 12 | **+1** | +1 |
-| **WIS** | 10 | **+0** | +0 |
-| **CHA** | 16 | **+3** | **+5** (Proficient) |
+| **力量 (STR)** | 8  | **-1** | -1 |
+| **敏捷 (DEX)** | 14 | **+2** | **+4** (熟练) |
+| **体质 (CON)** | 13 | **+1** | +1 |
+| **智力 (INT)** | 12 | **+1** | +1 |
+| **感知 (WIS)** | 10 | **+0** | +0 |
+| **魅力 (CHA)** | 16 | **+3** | **+5** (熟练) |
 
-*Proficiency Bonus:* **+2** | *Speed:* **30 ft.** | *Armor Class (AC):* **13** (Leather Armor + Dex) | *HP Max:* **9** (1d8 + 1 CON)
-
----
-
-## Skills
-- **Acrobatics:** +4 (DEX)
-- **Deception:** +5 (CHA)
-- **Insight:** +2 (WIS)
-- **Performance:** +5 (CHA)
-- **Persuasion:** +5 (CHA)
-- *Passive Perception:* 10
+*熟练加值 (PB)：* **+2** ｜ *速度 (Speed)：* **30 尺** ｜ *护甲等级 (AC)：* **13** (皮甲 11 + 敏捷 2) ｜ *生命值上限 (HP Max)：* **9** (1d8 + 1 体质)
 
 ---
 
-## Bardic Class Features (2024)
-- **Bardic Inspiration (d6):** As a Bonus Action, grant a d6 inspiration die to a creature within 60 ft. Within the next 1 hour, they can add it to one d20 test or damage roll. You have **3 uses per Long Rest** (equal to CHA modifier).
-- **Musician (Feat):** After you finish a Short or Long Rest, you can perform music to grant **Heroic Inspiration** to PB allies (2 companions)!
+## 三、技能熟练 (Skills)
+- **体操 (Acrobatics)：** +4 (敏捷)
+- **欺瞒 (Deception)：** +5 (魅力)
+- **洞悉 (Insight)：** +2 (感知)
+- **表演 (Performance)：** +5 (魅力)
+- **说服 (Persuasion)：** +5 (魅力)
+- *被动察觉 (Passive Perception)：* 10
 
 ---
 
-## Spellcasting (Bard)
-- **Spell Save DC:** 8 + PB (+2) + CHA (+3) = **13**
-- **Spell Attack Mod:** PB (+2) + CHA (+3) = **+5**
-- **Spell Slots (Level 1):** [ ] [ ] (Total: 2)
-
-### Cantrips
-1. **Vicious Mockery:** Range 60 ft. Target makes Wisdom save (DC 13) or takes **1d4 Psychic** damage and has Disadvantage on its next attack roll before end of its next turn!
-2. **Minor Illusion:** Create a sound or an image of an object within 30 ft for 1 minute.
-3. **Thaumaturgy:** Create instant sensory effects, boom voice, flicker flames.
-
-### Prepared Spells (4 Spells Prepared Daily)
-- [ ] **Dissonant Whispers:** Target takes **3d6 Psychic** damage on failed Wis save (half on success) and must immediately use its reaction to run away as far as its speed allows!
-- [ ] **Healing Word (Bonus Action):** Range 60 ft. Restore **2d4 + 3 HP** to a fallen ally.
-- [ ] **Faerie Fire (Concentration):** 20-foot cube. Each object and creature outlined in green light. Attacks against affected creatures have **Advantage**!
-- [ ] **Charm Person:** Charms a humanoid for 1 hour on a failed Wis save.
+## 四、吟游诗人特性与专长 (Bardic Features & Feats - 2024)
+- **诗人激励 (Bardic Inspiration｜d6)：** 以一个**附赠动作 (Bonus Action)** 赋予 60 尺内一名可见盟友一枚 **`1d6` 诗人激励骰**。在接下来 1 小时内，当其进行 d20 检定失败时，可投掷该骰加入结果转败为胜！每长休可使用 **3 次**（等同于魅力调整值）。
+- **音乐家 (Musician｜起源专长)：** 每次完成短休或长休时，你可以演奏乐曲，直接赋予至多 **2 名盟友**（等同于熟练加值）【英雄激励】！
 
 ---
 
-## Equipment
-Rapier (+4 to hit, 1d8+2 piercing, *Weapon Mastery - Vex*), Leather Armor, Dagger, Lute, Entertainer's Pack, Disguise kit, Costume, 18 GP.
+## 五、诗人施法能力 (Spellcasting - Bard)
+- **法术豁免 DC：** 8 + 熟练(+2) + 魅力(+3) = **13**
+- **法术攻击加值：** 熟练(+2) + 魅力(+3) = **+5**
+- **1 环法术位 (Spell Slots)：** `[●] [●]` (共 2 个)
+
+### 已知戏法 (Cantrips｜0环无限施放)
+1. **恶言相向 (Vicious Mockery)：** 射程 60 尺。目标进行感知豁免 (DC 13)，失败则受到 **`1d6` 心灵**伤害（2024强化），且在下回合结束前的下一次攻击检定承受**劣势**！
+2. **次级幻影 (Minor Illusion)：** 在 30 尺内创造持续 1 分钟的逼真声音或物体影像。
+3. **奇术 (Thaumaturgy)：** 令嗓音如洪钟轰鸣、火焰变色摇曳、门窗震动。
+
+### 今日已准备 1 环法术 (Prepared Spells)
+- `[ ]` **妖火 (Faerie Fire｜专注)：** 20 尺立方区域内敌人进行敏捷豁免 (DC 13)，失败被紫色妖火勾勒轮廓，所有对其发动的攻击检定均具有**优势 (Advantage)**，且无法隐形！
+- `[ ]` **不谐低语 (Dissonant Whispers)：** 60 尺内目标进行感知豁免 (DC 13)，失败受到 **`3d6` 心灵**伤害并必须立即消耗其【反应】全速逃离！
+- `[ ]` **治愈真言 (Healing Word｜附赠动作)：** 射程 60 尺，以【附赠动作】恢复盟友 **`2d4 + 3`** 点生命值。
+- `[ ]` **魅惑人类 (Charm Person)：** 30 尺内类人生物感知豁免失败则被你魅惑 1 小时。
+
+---
+
+## 六、随身装备与财富 (Equipment)
+刺剑 (Rapier，命中 +4，伤害 1d8+2 穿刺)、皮甲 (Leather Armor)、匕首 (Dagger)、鲁特琴 (Lute，施法法器)、艺人背包、易容工具、演出华服、治疗药水 x1、**18 金币 (GP)**。
