@@ -1,0 +1,288 @@
+{
+  "valen": {
+    "id": "valen",
+    "name": "瓦伦·铁福德",
+    "nameEn": "Valen Ironford",
+    "file": "fighter-champion.md",
+    "species": "人类 (Human)",
+    "class": "战士 1级",
+    "subclassPlan": "冠军武者 (Champion)",
+    "background": "士兵 (Soldier)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 16, "dex": 13, "con": 15, "int": 10, "wis": 12, "cha": 8 },
+    "saveProficiencies": ["str", "con"],
+    "armor": { "name": "链甲 (Chain Mail)", "baseAc": 16, "addDex": false, "shield": 0, "bonus": 1, "bonusSource": "防御战斗风格" },
+    "ac": 17,
+    "hitDie": 10,
+    "hpBonus": 0,
+    "maxHp": 12,
+    "initiativeBonus": 3,
+    "heroicInspiration": true,
+    "skills": {
+      "运动": { "ability": "str", "prof": 1, "bonus": 5, "source": "士兵背景" },
+      "威吓": { "ability": "cha", "prof": 1, "bonus": 1, "source": "士兵背景" },
+      "察觉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "战士职业" },
+      "求生": { "ability": "wis", "prof": 1, "bonus": 3, "source": "战士职业" },
+      "特技": { "ability": "dex", "prof": 1, "bonus": 3, "source": "人类博学" }
+    },
+    "attacks": [
+      { "name": "巨剑", "ability": "str", "proficient": true, "toHit": 5, "damage": "2d6+3", "mastery": "擦掠 (Graze)" },
+      { "name": "长剑", "ability": "str", "proficient": true, "toHit": 5, "damage": "1d8+3", "mastery": "削弱 (Sap)" },
+      { "name": "重弩", "ability": "dex", "proficient": true, "toHit": 3, "damage": "1d10+1", "mastery": "推离 (Push)" }
+    ],
+    "spellSlots": {},
+    "resources": {
+      "回气": { "current": 2, "max": 2, "recovery": "short:1" }
+    },
+    "gold": 10,
+    "inventory": ["链甲", "巨剑", "长剑", "重弩", "弩矢x20", "治疗药水x1"]
+  },
+  "lyra": {
+    "id": "lyra",
+    "name": "莱拉·影足",
+    "nameEn": "Lyra Shadowfoot",
+    "file": "rogue-thief.md",
+    "species": "精灵-木精灵 (Wood Elf)",
+    "class": "游荡者 1级",
+    "subclassPlan": "盗贼 (Thief)",
+    "background": "罪犯 (Criminal)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 35,
+    "abilities": { "str": 8, "dex": 16, "con": 14, "int": 13, "wis": 12, "cha": 10 },
+    "saveProficiencies": ["dex", "int"],
+    "armor": { "name": "皮甲 (Leather Armor)", "baseAc": 11, "addDex": true, "shield": 0, "bonus": 0 },
+    "ac": 14,
+    "hitDie": 8,
+    "hpBonus": 0,
+    "maxHp": 10,
+    "initiativeBonus": 5,
+    "heroicInspiration": false,
+    "skills": {
+      "隐匿": { "ability": "dex", "prof": 2, "bonus": 7, "source": "罪犯背景+游荡者专精" },
+      "巧手": { "ability": "dex", "prof": 2, "bonus": 7, "source": "罪犯背景+游荡者专精" },
+      "特技": { "ability": "dex", "prof": 1, "bonus": 5, "source": "游荡者职业" },
+      "欺瞒": { "ability": "cha", "prof": 1, "bonus": 2, "source": "游荡者职业" },
+      "调查": { "ability": "int", "prof": 1, "bonus": 3, "source": "游荡者职业" },
+      "洞悉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "游荡者职业" },
+      "察觉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "精灵敏锐感官" }
+    },
+    "attacks": [
+      { "name": "匕首", "ability": "dex", "proficient": true, "toHit": 5, "damage": "1d4+3", "mastery": "迅击 (Nick)" },
+      { "name": "短弓", "ability": "dex", "proficient": true, "toHit": 5, "damage": "1d6+3", "mastery": "侵扰 (Vex)" }
+    ],
+    "spellSlots": {},
+    "resources": {},
+    "gold": 15,
+    "inventory": ["皮甲", "匕首x2", "短弓", "箭矢x20", "盗贼工具", "撬棍", "治疗药水x1"]
+  },
+  "alistair": {
+    "id": "alistair",
+    "name": "阿里斯泰尔",
+    "nameEn": "Alistair of Oakhaven",
+    "file": "wizard-evoker.md",
+    "species": "侏儒-岩石侏儒 (Rock Gnome)",
+    "class": "法师 1级",
+    "subclassPlan": "塑能师 (Evoker)",
+    "background": "智者 (Sage)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 8, "dex": 14, "con": 14, "int": 16, "wis": 12, "cha": 10 },
+    "saveProficiencies": ["int", "wis"],
+    "armor": { "name": "无甲 (Unarmored)", "baseAc": 10, "addDex": true, "shield": 0, "bonus": 0 },
+    "ac": 12,
+    "hitDie": 6,
+    "hpBonus": 0,
+    "maxHp": 8,
+    "initiativeBonus": 2,
+    "heroicInspiration": false,
+    "skills": {
+      "奥秘": { "ability": "int", "prof": 1, "bonus": 5, "source": "智者背景" },
+      "历史": { "ability": "int", "prof": 1, "bonus": 5, "source": "智者背景" },
+      "调查": { "ability": "int", "prof": 1, "bonus": 5, "source": "法师职业" },
+      "洞悉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "法师职业" }
+    },
+    "attacks": [
+      { "name": "火焰箭", "ability": "int", "proficient": true, "toHit": 5, "damage": "1d10", "mastery": "戏法" },
+      { "name": "冷冻射线", "ability": "int", "proficient": true, "toHit": 5, "damage": "1d8", "mastery": "戏法" },
+      { "name": "长棍", "ability": "str", "proficient": true, "toHit": 1, "damage": "1d6-1", "mastery": "失衡 (Topple)" }
+    ],
+    "spellSlots": {
+      "1": { "used": 0, "max": 2 }
+    },
+    "resources": {
+      "奥术回想": { "current": 1, "max": 1, "recovery": "long:all" },
+      "魔法学徒免费1环": { "current": 1, "max": 1, "recovery": "long:all" }
+    },
+    "gold": 10,
+    "inventory": ["长棍", "水晶球法器", "精装法术书", "书法工具", "治疗药水x1"]
+  },
+  "vondal": {
+    "id": "vondal",
+    "name": "冯达尔修士",
+    "nameEn": "Brother Vondal",
+    "file": "cleric-life.md",
+    "species": "矮人 (Dwarf)",
+    "class": "牧师 1级",
+    "subclassPlan": "生命领域 (Life Domain)",
+    "background": "侍僧 (Acolyte)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 14, "dex": 10, "con": 16, "int": 10, "wis": 16, "cha": 10 },
+    "saveProficiencies": ["wis", "cha"],
+    "armor": { "name": "链甲+盾牌 (Chain Mail + Shield)", "baseAc": 16, "addDex": false, "shield": 2, "bonus": 0 },
+    "ac": 18,
+    "hitDie": 8,
+    "hpBonus": 1,
+    "hpBonusSource": "矮人坚韧 (+1/级)",
+    "maxHp": 12,
+    "initiativeBonus": 0,
+    "heroicInspiration": false,
+    "skills": {
+      "洞悉": { "ability": "wis", "prof": 1, "bonus": 5, "source": "侍僧背景" },
+      "宗教": { "ability": "int", "prof": 1, "bonus": 2, "source": "侍僧背景" },
+      "医药": { "ability": "wis", "prof": 1, "bonus": 5, "source": "牧师职业" },
+      "说服": { "ability": "cha", "prof": 1, "bonus": 2, "source": "牧师职业" }
+    },
+    "attacks": [
+      { "name": "战锤", "ability": "str", "proficient": true, "toHit": 4, "damage": "1d8+2", "mastery": "推离 (Push)" },
+      { "name": "导引箭", "ability": "wis", "proficient": true, "toHit": 5, "damage": "4d6", "mastery": "1环法术" }
+    ],
+    "spellSlots": {
+      "1": { "used": 0, "max": 2 }
+    },
+    "resources": {
+      "魔法学徒免费1环": { "current": 1, "max": 1, "recovery": "long:all" },
+      "石中敏锐": { "current": 2, "max": 2, "recovery": "long:all" }
+    },
+    "gold": 15,
+    "inventory": ["战锤", "链甲", "盾牌", "黎明银质圣徽", "圣水x1", "治疗药水x1"]
+  },
+  "theron": {
+    "id": "theron",
+    "name": "瑟莱爵士",
+    "nameEn": "Sir Theron",
+    "file": "paladin-devotion.md",
+    "species": "龙裔-金龙血统 (Gold Dragonborn)",
+    "class": "圣武士 1级",
+    "subclassPlan": "奉献之誓 (Oath of Devotion)",
+    "background": "贵族 (Noble)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 16, "dex": 10, "con": 14, "int": 10, "wis": 12, "cha": 15 },
+    "saveProficiencies": ["wis", "cha"],
+    "armor": { "name": "链甲+盾牌 (Chain Mail + Shield)", "baseAc": 16, "addDex": false, "shield": 2, "bonus": 0 },
+    "ac": 18,
+    "hitDie": 10,
+    "hpBonus": 0,
+    "maxHp": 12,
+    "initiativeBonus": 0,
+    "heroicInspiration": false,
+    "skills": {
+      "历史": { "ability": "int", "prof": 1, "bonus": 2, "source": "贵族背景" },
+      "说服": { "ability": "cha", "prof": 1, "bonus": 4, "source": "贵族背景" },
+      "运动": { "ability": "str", "prof": 1, "bonus": 5, "source": "圣武士职业" },
+      "威吓": { "ability": "cha", "prof": 1, "bonus": 4, "source": "圣武士职业" },
+      "洞悉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "技艺娴熟专长" },
+      "察觉": { "ability": "wis", "prof": 1, "bonus": 3, "source": "技艺娴熟专长" },
+      "求生": { "ability": "wis", "prof": 1, "bonus": 3, "source": "技艺娴熟专长" }
+    },
+    "attacks": [
+      { "name": "长剑", "ability": "str", "proficient": true, "toHit": 5, "damage": "1d8+3", "mastery": "削弱 (Sap)" },
+      { "name": "标枪", "ability": "str", "proficient": true, "toHit": 5, "damage": "1d6+3", "mastery": "缓速 (Slow)" }
+    ],
+    "spellSlots": {
+      "1": { "used": 0, "max": 2 }
+    },
+    "resources": {
+      "圣疗池": { "current": 5, "max": 5, "recovery": "long:all" },
+      "龙息喷吐": { "current": 2, "max": 2, "recovery": "long:all" }
+    },
+    "gold": 25,
+    "inventory": ["链甲", "长剑", "盾牌", "标枪x3", "神圣纹章圣徽", "治疗药水x1"]
+  },
+  "cassandra": {
+    "id": "cassandra",
+    "name": "卡珊德拉·梅洛迪",
+    "nameEn": "Cassandra Melody",
+    "file": "bard-lore.md",
+    "species": "提夫林-炼狱传承 (Tiefling)",
+    "class": "吟游诗人 1级",
+    "subclassPlan": "逸闻学院 (College of Lore)",
+    "background": "艺人 (Entertainer)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 8, "dex": 14, "con": 13, "int": 12, "wis": 10, "cha": 16 },
+    "saveProficiencies": ["dex", "cha"],
+    "armor": { "name": "皮甲 (Leather Armor)", "baseAc": 11, "addDex": true, "shield": 0, "bonus": 0 },
+    "ac": 13,
+    "hitDie": 8,
+    "hpBonus": 0,
+    "maxHp": 9,
+    "initiativeBonus": 2,
+    "heroicInspiration": false,
+    "skills": {
+      "特技": { "ability": "dex", "prof": 1, "bonus": 4, "source": "艺人背景" },
+      "表演": { "ability": "cha", "prof": 1, "bonus": 5, "source": "艺人背景" },
+      "欺瞒": { "ability": "cha", "prof": 1, "bonus": 5, "source": "吟游诗人职业" },
+      "洞悉": { "ability": "wis", "prof": 1, "bonus": 2, "source": "吟游诗人职业" },
+      "说服": { "ability": "cha", "prof": 1, "bonus": 5, "source": "吟游诗人职业" }
+    },
+    "attacks": [
+      { "name": "刺剑", "ability": "dex", "proficient": true, "toHit": 4, "damage": "1d8+2", "mastery": "侵扰 (Vex)" },
+      { "name": "燃火术", "ability": "cha", "proficient": true, "toHit": 5, "damage": "1d8", "mastery": "戏法" }
+    ],
+    "spellSlots": {
+      "1": { "used": 0, "max": 2 }
+    },
+    "resources": {
+      "诗人激励": { "current": 3, "max": 3, "recovery": "long:all" }
+    },
+    "gold": 18,
+    "inventory": ["刺剑", "皮甲", "匕首x2", "鲁特琴", "演出华服", "治疗药水x1"]
+  },
+  "bran": {
+    "id": "bran",
+    "name": "布兰·铁须",
+    "nameEn": "Bran Ironbeard",
+    "file": "sidekick-bran.md",
+    "species": "矮人 (Dwarf)",
+    "class": "斥候随从 1级",
+    "subclassPlan": "专家/武者随从",
+    "background": "向导/猎人 (Guide)",
+    "level": 1,
+    "proficiencyBonus": 2,
+    "speed": 30,
+    "abilities": { "str": 12, "dex": 14, "con": 14, "int": 10, "wis": 14, "cha": 10 },
+    "saveProficiencies": ["dex", "con"],
+    "armor": { "name": "镶钉皮甲 (Studded Leather)", "baseAc": 12, "addDex": true, "shield": 0, "bonus": 0 },
+    "ac": 14,
+    "hitDie": 8,
+    "hpBonus": 2,
+    "hpBonusSource": "矮人坚韧 (+1) + 历战斥候体魄 (+1)",
+    "maxHp": 12,
+    "initiativeBonus": 2,
+    "heroicInspiration": false,
+    "isSidekick": true,
+    "skills": {
+      "察觉": { "ability": "wis", "prof": 1, "bonus": 4, "source": "斥候训练" },
+      "求生": { "ability": "wis", "prof": 1, "bonus": 4, "source": "猎人背景" },
+      "隐匿": { "ability": "dex", "prof": 1, "bonus": 4, "source": "斥候训练" },
+      "自然": { "ability": "int", "prof": 1, "bonus": 2, "source": "猎人背景" }
+    },
+    "attacks": [
+      { "name": "短弓", "ability": "dex", "proficient": true, "toHit": 4, "damage": "1d6+2", "mastery": "侵扰 (Vex)" },
+      { "name": "手斧", "ability": "dex", "proficient": true, "toHit": 4, "damage": "1d6+2", "mastery": "侵扰 (Vex)" }
+    ],
+    "spellSlots": {},
+    "resources": {},
+    "gold": 5,
+    "inventory": ["镶钉皮甲", "短弓", "箭矢x20", "手斧x2", "捕兽夹", "50尺麻绳", "治疗药水x1"]
+  }
+}

@@ -9,6 +9,7 @@
  *
  * Examples:
  *   node scripts/roll-dice.js 1d20+5 --label "Attack roll"
+ *   node scripts/roll-dice.js 1d20+5 --attack --ac 16 --label "Longsword Attack"
  *   node scripts/roll-dice.js 1d20+3 --adv --label "Perception with Advantage"
  *   node scripts/roll-dice.js 1d20+1 --dis --label "Stealth in heavy armor"
  *   node scripts/roll-dice.js 2d6+3 --crit --label "Greatsword Critical Hit!"
@@ -30,31 +31,32 @@ const MAX_SIDES = 1000;
 const MAX_MOD = 10000;
 const MAX_BATCH = 100;
 
+const useColor = Boolean(process.stdout.isTTY && !process.env.NO_COLOR);
 const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  dim: '\x1b[2m',
-  cyan: '\x1b[36m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  red: '\x1b[31m',
+  reset: useColor ? '\x1b[0m' : '',
+  bright: useColor ? '\x1b[1m' : '',
+  dim: useColor ? '\x1b[2m' : '',
+  cyan: useColor ? '\x1b[36m' : '',
+  green: useColor ? '\x1b[32m' : '',
+  yellow: useColor ? '\x1b[33m' : '',
+  blue: useColor ? '\x1b[34m' : '',
+  magenta: useColor ? '\x1b[35m' : '',
+  red: useColor ? '\x1b[31m' : '',
 };
 
 function rollDie(sides) {
   return Math.floor(Math.random() * sides) + 1;
 }
 
-function validateDc(rawDc) {
+function validateDc(rawDc, label = 'DC') {
   if (rawDc === undefined || rawDc === null) return null;
   const str = String(rawDc).trim();
   if (!/^[+-]?\d+$/.test(str)) {
-    throw new Error(`Invalid DC value: "${rawDc}" (must be an integer)`);
+    throw new Error(`Invalid ${label} value: "${rawDc}" (must be an integer)`);
   }
   const num = Number(str);
   if (!Number.isSafeInteger(num) || num < -1000 || num > 1000) {
-    throw new Error(`DC value out of range: "${rawDc}"`);
+    throw new Error(`${label} value out of range: "${rawDc}"`);
   }
   return num;
 }
@@ -91,55 +93,93 @@ ${colors.yellow}Options:${colors.reset}
   --adv, --advantage    Roll twice on 1d20, take the higher result
   --dis, --disadvantage Roll twice on 1d20, take the lower result
   --crit                Double the dice count for critical hit damage
+  --attack              Attack roll mode (Nat 20 always hits, Nat 1 always misses)
+  --ac <number>         Target AC for attack rolls (enables --attack mode)
   --dc <number>         Evaluate against target DC (Success / Failure)
   --hidden              Output ONLY the final total number (for secret DM rolls)
   --batch <count>       Roll the expression multiple times (1..100)
+  --json, -j            Output result as JSON
   --help, -h            Show this help message
 `);
 }
 
-function parseArgs(args) {
+export function parseArgs(args) {
   const parsed = {
     expr: null,
     label: '',
     advantage: false,
     disadvantage: false,
     crit: false,
+    attack: false,
+    ac: null,
+    rawAc: undefined,
     dc: null,
     rawDc: undefined,
     hidden: false,
     batch: 1,
     rawBatch: undefined,
+    json: false,
     help: false,
   };
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  // Expand --flag=value tokens while preserving negative dice/modifiers
+  const expanded = [];
+  for (const rawArg of args) {
+    if (rawArg.startsWith('--') && rawArg.includes('=')) {
+      const eqIdx = rawArg.indexOf('=');
+      expanded.push(rawArg.slice(0, eqIdx), rawArg.slice(eqIdx + 1));
+    } else {
+      expanded.push(rawArg);
+    }
+  }
+
+  for (let i = 0; i < expanded.length; i++) {
+    const arg = expanded[i];
     if (arg === '--help' || arg === '-h') {
       parsed.help = true;
+    } else if (arg === '--json' || arg === '-j') {
+      parsed.json = true;
     } else if (arg === '--label') {
-      parsed.label = args[++i] || '';
+      if (i + 1 >= expanded.length) throw new Error('Missing value for --label');
+      parsed.label = expanded[++i] || '';
     } else if (arg === '--adv' || arg === '--advantage') {
       parsed.advantage = true;
     } else if (arg === '--dis' || arg === '--disadvantage') {
       parsed.disadvantage = true;
     } else if (arg === '--crit') {
       parsed.crit = true;
+    } else if (arg === '--attack') {
+      parsed.attack = true;
+    } else if (arg === '--ac') {
+      if (i + 1 >= expanded.length) throw new Error('Missing value for --ac');
+      parsed.rawAc = expanded[++i] ?? '';
+      parsed.attack = true;
     } else if (arg === '--hidden') {
       parsed.hidden = true;
     } else if (arg === '--dc') {
-      parsed.rawDc = args[++i] ?? '';
+      if (i + 1 >= expanded.length) throw new Error('Missing value for --dc');
+      parsed.rawDc = expanded[++i] ?? '';
     } else if (arg === '--batch') {
-      parsed.rawBatch = args[++i] ?? '';
-    } else if (!parsed.expr && !arg.startsWith('-')) {
+      if (i + 1 >= expanded.length) throw new Error('Missing value for --batch');
+      parsed.rawBatch = expanded[++i] ?? '';
+    } else if (!parsed.expr && (!arg.startsWith('-') || /^-[0-9dD]/.test(arg))) {
       parsed.expr = arg;
-    } else if (!parsed.expr && /^-[0-9dD]/.test(arg)) {
-      parsed.expr = arg;
+    } else if (parsed.expr && (arg === '+' || arg === '-') && i + 1 < expanded.length && /^[0-9dD]/.test(expanded[i + 1])) {
+      parsed.expr += arg + expanded[++i];
+    } else if (parsed.expr && /[+-]$/.test(parsed.expr) && /^[0-9dD]/.test(arg)) {
+      parsed.expr += arg;
+    } else if (parsed.expr && /^[+-][0-9dD]/.test(arg)) {
+      parsed.expr += arg;
+    } else {
+      throw new Error(`Unknown option or unexpected argument: "${arg}"`);
     }
   }
 
   if (parsed.rawDc !== undefined) {
-    parsed.dc = validateDc(parsed.rawDc);
+    parsed.dc = validateDc(parsed.rawDc, 'DC');
+  }
+  if (parsed.rawAc !== undefined) {
+    parsed.ac = validateDc(parsed.rawAc, 'AC');
   }
   if (parsed.rawBatch !== undefined) {
     parsed.batch = validateBatch(parsed.rawBatch);
@@ -245,6 +285,39 @@ export function parseDiceExpression(expr) {
   return { type: 'compound', terms };
 }
 
+function evaluateRollOutcome(result, options = {}) {
+  const dc = options.dc ?? null;
+  const ac = options.ac ?? null;
+  const isAttack = Boolean(options.attack || ac !== null);
+  const targetVal = ac !== null ? ac : dc;
+
+  if (isAttack) {
+    result.attack = true;
+    if (ac !== null) result.ac = ac;
+    if (result.d20Special === 'NATURAL 20!') {
+      result.hit = true;
+      result.autoHit = true;
+      result.autoMiss = false;
+      if (targetVal !== null) result.success = true;
+    } else if (result.d20Special === 'NATURAL 1!') {
+      result.hit = false;
+      result.autoHit = false;
+      result.autoMiss = true;
+      if (targetVal !== null) result.success = false;
+    } else if (targetVal !== null) {
+      result.hit = result.total >= targetVal;
+      result.autoHit = false;
+      result.autoMiss = false;
+      result.success = result.hit;
+    }
+  } else if (dc !== null) {
+    result.dc = dc;
+    result.success = result.total >= dc;
+  }
+
+  return result;
+}
+
 function executeSingleRoll(expr, options = {}) {
   const parsed = parseDiceExpression(expr);
   const hasAdvOrDis = Boolean(options.advantage || options.disadvantage);
@@ -265,14 +338,14 @@ function executeSingleRoll(expr, options = {}) {
     const kept = sorted.slice(0, keepCount);
     const total = kept.reduce((a, b) => a + b, 0) + mod;
 
-    return {
+    return evaluateRollOutcome({
       expr,
       rolls,
       kept,
       mod,
       total,
       d20Special: null
-    };
+    }, options);
   }
 
   const terms = parsed.terms;
@@ -319,7 +392,7 @@ function executeSingleRoll(expr, options = {}) {
       if (chosen === 20) d20Special = 'NATURAL 20!';
       else if (chosen === 1) d20Special = 'NATURAL 1!';
 
-      return {
+      return evaluateRollOutcome({
         expr: `${expr} (${modeTag})`,
         mode: modeTag,
         rolls: [r1, r2],
@@ -327,7 +400,7 @@ function executeSingleRoll(expr, options = {}) {
         mod,
         total,
         d20Special
-      };
+      }, options);
     }
 
     // Standard single roll
@@ -346,13 +419,13 @@ function executeSingleRoll(expr, options = {}) {
       else if (rolls[0] === 1) d20Special = 'NATURAL 1!';
     }
 
-    return {
+    return evaluateRollOutcome({
       expr,
       rolls,
       mod,
       total,
       d20Special
-    };
+    }, options);
   }
 
   // 3. Compound multi-dice expression (e.g., 1d8+3+2d8, 1d20+5+1d4)
@@ -418,14 +491,14 @@ function executeSingleRoll(expr, options = {}) {
   }
 
   const total = totalSum + totalMod;
-  return {
+  return evaluateRollOutcome({
     expr,
     rolls: allRolls,
     terms: termResults,
     mod: totalMod,
     total,
     d20Special
-  };
+  }, options);
 }
 
 function main() {
@@ -444,17 +517,17 @@ function main() {
   }
 
   try {
-    for (let b = 0; b < parsed.batch; b++) {
-      const result = executeSingleRoll(parsed.expr, parsed);
+    const batchResult = roll(parsed.expr, parsed);
+    if (parsed.json) {
+      console.log(JSON.stringify(batchResult, null, 2));
+      return;
+    }
 
+    const results = batchResult.results || [batchResult];
+    for (const result of results) {
       if (parsed.hidden) {
-        // In hidden mode, output minimal raw result for secret DM tracking
-        let out = `${result.total}`;
-        if (parsed.dc !== null) {
-          out += result.total >= parsed.dc ? ` (SUCCESS vs DC ${parsed.dc})` : ` (FAILURE vs DC ${parsed.dc})`;
-        }
-        if (result.d20Special) out += ` [${result.d20Special}]`;
-        console.log(out);
+        // In hidden mode, output ONLY the bare total number without leaking DC or labels
+        console.log(`${result.total}`);
         continue;
       }
 
@@ -492,9 +565,19 @@ function main() {
         console.log(`${specialColor}${colors.bright}★ ${result.d20Special} ★${colors.reset}`);
       }
 
-      if (parsed.dc !== null) {
-        const success = result.total >= parsed.dc;
-        if (success) {
+      if (result.attack && (result.hit !== undefined)) {
+        const targetLabel = parsed.ac !== null ? `AC ${parsed.ac}` : (parsed.dc !== null ? `AC/DC ${parsed.dc}` : 'Attack');
+        if (result.autoHit) {
+          console.log(`${colors.green}${colors.bright}✓ CRITICAL HIT! (Auto-Hit)${colors.reset} ${colors.dim}(${targetLabel})${colors.reset}`);
+        } else if (result.autoMiss) {
+          console.log(`${colors.red}${colors.bright}✗ AUTOMATIC MISS! (Natural 1)${colors.reset} ${colors.dim}(${targetLabel})${colors.reset}`);
+        } else if (result.hit) {
+          console.log(`${colors.green}${colors.bright}✓ HIT${colors.reset} ${colors.dim}(${targetLabel})${colors.reset}`);
+        } else {
+          console.log(`${colors.red}${colors.bright}✗ MISS${colors.reset} ${colors.dim}(${targetLabel})${colors.reset}`);
+        }
+      } else if (parsed.dc !== null) {
+        if (result.success) {
           console.log(`${colors.green}${colors.bright}✓ SUCCESS${colors.reset} ${colors.dim}(DC ${parsed.dc})${colors.reset}`);
         } else {
           console.log(`${colors.red}${colors.bright}✗ FAILURE${colors.reset} ${colors.dim}(DC ${parsed.dc})${colors.reset}`);
@@ -511,26 +594,35 @@ function main() {
  * Programmatic roll function for in-process execution (<0.1ms)
  */
 export function roll(expr, options = {}) {
-  const dcVal = validateDc(options.dc);
+  const dcVal = validateDc(options.dc, 'DC');
+  const acVal = validateDc(options.ac, 'AC');
   const batchVal = validateBatch(options.batch);
   const parsedOpts = {
     expr,
     advantage: Boolean(options.advantage || options.adv),
     disadvantage: Boolean(options.disadvantage || options.dis),
     crit: Boolean(options.crit),
+    attack: Boolean(options.attack || acVal !== null),
+    ac: acVal,
     dc: dcVal,
     hidden: Boolean(options.hidden),
     label: options.label || '',
     batch: batchVal
   };
-  const result = executeSingleRoll(expr, parsedOpts);
-  if (parsedOpts.dc !== null) {
-    result.success = result.total >= parsedOpts.dc;
+
+  const results = [];
+  for (let i = 0; i < batchVal; i++) {
+    results.push(executeSingleRoll(expr, parsedOpts));
   }
-  return result;
+
+  const primary = { ...results[0] };
+  primary.batch = batchVal;
+  primary.results = results;
+  primary.totals = results.map(r => r.total);
+  return primary;
 }
 
-export { executeSingleRoll, parseArgs };
+export { executeSingleRoll };
 export default roll;
 
 const isMain = process.argv[1] && (
