@@ -204,6 +204,220 @@ export function parseIntStrict(value, fieldName = '数值', { min = -100000000, 
   return num;
 }
 
+export function abilityMod(score) {
+  const num = parseIntStrict(score, 'abilityScore', { min: 1, max: 30 });
+  return Math.floor((num - 10) / 2);
+}
+
+export function parseAbilities(raw) {
+  if (!raw) return null;
+  const keys = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const out = {};
+    for (const k of keys) {
+      if (raw[k] !== undefined && raw[k] !== null) {
+        out[k] = parseIntStrict(raw[k], `abilities.${k}`, { min: 1, max: 30 });
+      }
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+  const str = String(raw).trim();
+  if (!str) return null;
+  if (str.startsWith('{')) {
+    return parseAbilities(JSON.parse(str));
+  }
+  const parts = str.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 6 && parts.every(p => /^[+-]?\d+$/.test(p))) {
+    const out = {};
+    for (let i = 0; i < 6; i++) {
+      out[keys[i]] = parseIntStrict(parts[i], `abilities.${keys[i]}`, { min: 1, max: 30 });
+    }
+    return out;
+  }
+  const out = {};
+  for (const part of parts) {
+    const [kRaw, vRaw] = part.split(':').map(s => s.trim());
+    const k = String(kRaw || '').toLowerCase();
+    if (!keys.includes(k) || vRaw === undefined) {
+      throw new Error(`无效的属性配置项: "${part}" (支持格式: str:14,dex:14,con:15,int:10,wis:12,cha:8)`);
+    }
+    out[k] = parseIntStrict(vRaw, `abilities.${k}`, { min: 1, max: 30 });
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+const CLASS_ALIAS_TO_CANONICAL = [
+  { canonical: '野蛮人', aliases: ['野蛮人', 'barbarian'] },
+  { canonical: '吟游诗人', aliases: ['吟游诗人', '诗人', 'bard'] },
+  { canonical: '牧师', aliases: ['牧师', 'cleric'] },
+  { canonical: '德鲁伊', aliases: ['德鲁伊', 'druid'] },
+  { canonical: '战士', aliases: ['战士', 'fighter'] },
+  { canonical: '武僧', aliases: ['武僧', 'monk'] },
+  { canonical: '圣武士', aliases: ['圣武士', 'paladin'] },
+  { canonical: '游侠', aliases: ['游侠', '巡林客', 'ranger'] },
+  { canonical: '游荡者', aliases: ['游荡者', '盗贼', 'rogue'] },
+  { canonical: '术士', aliases: ['术士', 'sorcerer'] },
+  { canonical: '魔契师', aliases: ['魔契师', '邪术师', 'warlock'] },
+  { canonical: '法师', aliases: ['法师', 'wizard'] },
+  { canonical: '奇械师', aliases: ['奇械师', 'artificer'] },
+];
+
+export function resolveCanonical2024Class(className) {
+  const cls = String(className || '').trim().toLowerCase();
+  if (!cls) return null;
+  for (const entry of CLASS_ALIAS_TO_CANONICAL) {
+    if (entry.aliases.some(a => cls === a || cls.includes(a))) {
+      return entry.canonical;
+    }
+  }
+  return null;
+}
+
+export function get2024Level1ClassDefaults(className, { chaMod = null, strict = false } = {}) {
+  const canonicalClass = resolveCanonical2024Class(className);
+  if (!canonicalClass && strict) {
+    throw new Error(`未知的 2024 职业: "${className}" (可选: 野蛮人/吟游诗人/牧师/德鲁伊/战士/武僧/圣武士/游侠/游荡者/术士/魔契师/法师)`);
+  }
+  const hitDie = inferHitDie(canonicalClass || className);
+  const hitDieSides = parseInt(hitDie.slice(1), 10) || 10;
+
+  // 2024 1级法术位规则：全施法职业（吟游诗人/牧师/德鲁伊/术士/法师）及圣武士、游侠 1 级均有 2 个一环法术位；魔契师契约魔法有 1 个一环法术位
+  const twoSlotClasses = new Set(['吟游诗人', '牧师', '德鲁伊', '圣武士', '游侠', '术士', '法师', '奇械师']);
+  let spellSlots = { 1: { max: 0, current: 0 } };
+  if (canonicalClass && twoSlotClasses.has(canonicalClass)) {
+    spellSlots = { 1: { max: 2, current: 2 } };
+  } else if (canonicalClass === '魔契师') {
+    spellSlots = { 1: { max: 1, current: 1 } };
+  }
+
+  // 2024 1级职业充能资源规则
+  const resources = {};
+  if (canonicalClass === '野蛮人') {
+    resources['狂暴'] = { current: 2, max: 2, recovery: 'short:1' };
+  } else if (canonicalClass === '吟游诗人') {
+    if (strict && (chaMod === null || chaMod === undefined)) {
+      throw new Error('吟游诗人激励次数取决于魅力调整值，请在角色属性中提供 abilities.cha 或显式传入 --cha <魅力调整值>');
+    }
+    const uses = Math.max(1, chaMod ?? 0);
+    resources['吟游诗人激励'] = { current: uses, max: uses, recovery: 'long:all' };
+  } else if (canonicalClass === '战士') {
+    resources['回气'] = { current: 2, max: 2, recovery: 'short:1' };
+  } else if (canonicalClass === '圣武士') {
+    resources['圣疗'] = { current: 5, max: 5, recovery: 'long:all' };
+  } else if (canonicalClass === '游侠') {
+    resources['宿敌'] = { current: 2, max: 2, recovery: 'long:all' };
+  } else if (canonicalClass === '术士') {
+    resources['先天术法'] = { current: 2, max: 2, recovery: 'long:all' };
+  } else if (canonicalClass === '法师') {
+    resources['奥术回想'] = { current: 1, max: 1, recovery: 'long:all' };
+  }
+
+  return {
+    canonicalClass: canonicalClass || String(className || '').trim(),
+    hitDie,
+    hitDieSides,
+    spellSlots,
+    resources
+  };
+}
+
+const ARMOR_TABLE_2024 = [
+  { names: ['无甲', 'unarmored', 'none', '无'], category: 'unarmored', baseAc: 10, addDex: true, maxDex: null },
+  { names: ['镶钉皮甲', 'studded leather'], category: 'light', baseAc: 12, addDex: true, maxDex: null },
+  { names: ['布甲', 'padded'], category: 'light', baseAc: 11, addDex: true, maxDex: null },
+  { names: ['皮甲', 'leather'], category: 'light', baseAc: 11, addDex: true, maxDex: null },
+  { names: ['半身板甲', 'half plate'], category: 'medium', baseAc: 15, addDex: true, maxDex: 2 },
+  { names: ['胸甲', 'breastplate'], category: 'medium', baseAc: 14, addDex: true, maxDex: 2 },
+  { names: ['鳞甲', 'scale mail'], category: 'medium', baseAc: 14, addDex: true, maxDex: 2 },
+  { names: ['链甲衫', 'chain shirt'], category: 'medium', baseAc: 13, addDex: true, maxDex: 2 },
+  { names: ['兽皮甲', 'hide'], category: 'medium', baseAc: 12, addDex: true, maxDex: 2 },
+  { names: ['板甲', 'plate'], category: 'heavy', baseAc: 18, addDex: false, maxDex: 0 },
+  { names: ['板条甲', 'splint'], category: 'heavy', baseAc: 17, addDex: false, maxDex: 0 },
+  { names: ['链甲', 'chain mail'], category: 'heavy', baseAc: 16, addDex: false, maxDex: 0 },
+  { names: ['环甲', 'ring mail'], category: 'heavy', baseAc: 14, addDex: false, maxDex: 0 },
+];
+
+export function computeAcFromArmor(
+  armorSpec,
+  { abilities = null, dexMod = null, conMod = null, wisMod = null, shield = false, className = '' } = {}
+) {
+  const dMod = dexMod !== null && dexMod !== undefined
+    ? dexMod
+    : (abilities?.dex !== undefined ? abilityMod(abilities.dex) : null);
+  const cMod = conMod !== null && conMod !== undefined
+    ? conMod
+    : (abilities?.con !== undefined ? abilityMod(abilities.con) : null);
+  const wMod = wisMod !== null && wisMod !== undefined
+    ? wisMod
+    : (abilities?.wis !== undefined ? abilityMod(abilities.wis) : null);
+
+  if (typeof armorSpec === 'object' && armorSpec !== null) {
+    const baseAc = Number(armorSpec.baseAc) || 10;
+    const shieldBonus = Number(armorSpec.shield) || (shield ? 2 : 0);
+    const miscBonus = Number(armorSpec.bonus) || 0;
+    if (armorSpec.addDex) {
+      if (dMod === null) {
+        throw new Error(`护甲 "${armorSpec.name || '轻/中甲'}" 需要敏捷调整值，请提供 abilities.dex / --dex 或直接指定 --ac`);
+      }
+      const dexContrib = typeof armorSpec.maxDex === 'number' ? Math.min(armorSpec.maxDex, dMod) : dMod;
+      return baseAc + dexContrib + shieldBonus + miscBonus;
+    }
+    return baseAc + shieldBonus + miscBonus;
+  }
+
+  const rawStr = String(armorSpec || '').trim().toLowerCase();
+  if (!rawStr) {
+    throw new Error('护甲名称不能为空，请指定有效护甲 (--armor) 或显式传入 --ac');
+  }
+
+  const hasShieldInStr = rawStr.includes('盾') || rawStr.includes('shield');
+  const shieldBonus = shield === true || shield === 'true' || shield === 1 || shield === '1' || hasShieldInStr
+    ? 2
+    : (typeof shield === 'number' ? shield : 0);
+  const cleaned = rawStr.replace(/[+＋]?\s*(盾牌|圣盾|木盾|铁盾|盾|shield)/g, '').trim() || '无甲';
+
+  const matched = ARMOR_TABLE_2024.find(entry => entry.names.some(n => cleaned === n || cleaned.includes(n)));
+  if (!matched) {
+    throw new Error(`未知的 2024 护甲类型: "${armorSpec}" (支持: 无甲/布甲/皮甲/镶钉皮甲/兽皮甲/链甲衫/鳞甲/胸甲/半身板甲/环甲/链甲/板条甲/板甲，可附带 +盾牌)`);
+  }
+
+  const canonicalClass = resolveCanonical2024Class(className);
+  if (matched.category === 'unarmored') {
+    if (dMod === null) {
+      throw new Error('无甲计算 AC 需要敏捷数据 (abilities.dex 或 --dex)，或直接传入 --ac');
+    }
+    if (canonicalClass === '野蛮人') {
+      if (cMod === null) {
+        throw new Error('野蛮人无甲防御需要体质数据 (abilities.con 或 --con)，或直接传入 --ac');
+      }
+      return 10 + dMod + cMod + shieldBonus;
+    }
+    if (canonicalClass === '武僧' && shieldBonus === 0) {
+      if (wMod === null) {
+        throw new Error('武僧无甲防御需要感知数据 (abilities.wis 或 --wis)，或直接传入 --ac');
+      }
+      return 10 + dMod + wMod;
+    }
+    return 10 + dMod + shieldBonus;
+  }
+
+  if (matched.category === 'light') {
+    if (dMod === null) {
+      throw new Error(`轻甲 "${armorSpec}" 计算 AC 需要敏捷数据 (abilities.dex 或 --dex)，或直接传入 --ac`);
+    }
+    return matched.baseAc + dMod + shieldBonus;
+  }
+
+  if (matched.category === 'medium') {
+    if (dMod === null) {
+      throw new Error(`中甲 "${armorSpec}" 计算 AC 需要敏捷数据 (abilities.dex 或 --dex)，或直接传入 --ac`);
+    }
+    return matched.baseAc + Math.min(matched.maxDex, dMod) + shieldBonus;
+  }
+
+  return matched.baseAc + shieldBonus;
+}
+
 function inferHitDie(className, explicitHitDie) {
   if (explicitHitDie !== undefined && explicitHitDie !== null) {
     const normalized = String(explicitHitDie).trim().toLowerCase().replace(/^(\d+)$/, 'd$1');
@@ -511,44 +725,96 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
     { min: 0, max: 20 }
   );
   const isLevel0 = level === 0;
+  const abilities = (isPrimary && options.abilities !== undefined)
+    ? parseAbilities(options.abilities)
+    : (preset?.abilities ? parseAbilities(preset.abilities) : null);
+
   const conMod = (isPrimary && options.con !== undefined)
     ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
-    : 0;
-  const defaultLevel0Hp = Math.max(4, 4 + conMod);
+    : (abilities?.con !== undefined ? abilityMod(abilities.con) : null);
+  const dexMod = (isPrimary && options.dex !== undefined)
+    ? parseIntStrict(options.dex, 'dex', { min: -5, max: 10 })
+    : (abilities?.dex !== undefined ? abilityMod(abilities.dex) : null);
+  const wisMod = (isPrimary && options.wis !== undefined)
+    ? parseIntStrict(options.wis, 'wis', { min: -5, max: 10 })
+    : (abilities?.wis !== undefined ? abilityMod(abilities.wis) : null);
+  const chaMod = (isPrimary && options.cha !== undefined)
+    ? parseIntStrict(options.cha, 'cha', { min: -5, max: 10 })
+    : (abilities?.cha !== undefined ? abilityMod(abilities.cha) : null);
 
-  const maxHp = parseIntStrict(
-    (isPrimary ? (options.hp ?? options.maxHp) : undefined) ?? preset?.hp ?? preset?.maxHp ?? (isLevel0 ? String(defaultLevel0Hp) : '12'),
-    'hp',
-    { min: 1, max: 9999 }
-  );
-  const ac = parseIntStrict(
-    (isPrimary ? options.ac : undefined) ?? preset?.ac ?? (isLevel0 ? '10' : '16'),
-    'ac',
-    { min: 1, max: 99 }
-  );
   const charClass = (isPrimary ? options.class : undefined) || preset?.class || (isLevel0 ? '平民' : '战士');
+  const classDefaults = isLevel0
+    ? { hitDie: 'd8', hitDieSides: 8, spellSlots: { 1: { max: 0, current: 0 } }, resources: {} }
+    : get2024Level1ClassDefaults(charClass, { chaMod });
+
   const hitDie = isLevel0 && (!isPrimary || options.hitDie === undefined)
     ? 'd8'
     : inferHitDie(charClass, (isPrimary ? options.hitDie : undefined) ?? preset?.hitDie);
+  const hitDieSides = parseInt(hitDie.slice(1), 10) || 10;
+
+  const defaultLevel0Hp = Math.max(4, 4 + (conMod ?? 0));
+  const defaultLevel1Hp = conMod !== null ? Math.max(1, hitDieSides + conMod) : 12;
+
+  const maxHp = parseIntStrict(
+    (isPrimary ? (options.hp ?? options.maxHp) : undefined) ??
+      preset?.hp ??
+      preset?.maxHp ??
+      (isLevel0 ? String(defaultLevel0Hp) : String(defaultLevel1Hp)),
+    'hp',
+    { min: 1, max: 9999 }
+  );
+
+  let ac;
+  if (isPrimary && options.ac !== undefined) {
+    ac = parseIntStrict(options.ac, 'ac', { min: 1, max: 99 });
+  } else if (isPrimary && options.armor !== undefined) {
+    ac = computeAcFromArmor(options.armor, {
+      abilities,
+      dexMod,
+      conMod,
+      wisMod,
+      shield: options.shield,
+      className: charClass
+    });
+  } else if (preset?.ac !== undefined) {
+    ac = parseIntStrict(preset.ac, 'ac', { min: 1, max: 99 });
+  } else if (isLevel0) {
+    ac = 10;
+  } else {
+    ac = 16;
+  }
+
   const hdCount = Math.max(1, level);
   const speed = (isPrimary && options.speed !== undefined)
     ? inferSpeed(options)
     : (preset?.speed ?? inferSpeed(options));
   const slotsConfig = (isPrimary && options.slots)
     ? parseSlots(options.slots)
-    : (preset?.spellSlots ? parseSlots(preset.spellSlots) : { 1: { max: 0, current: 0 } });
+    : (preset?.spellSlots ? parseSlots(preset.spellSlots) : classDefaults.spellSlots);
 
   const resources = {};
   if (preset?.resources) {
     for (const [k, v] of Object.entries(preset.resources)) {
       resources[k] = { current: v.current, max: v.max, recovery: v.recovery || 'long:all' };
     }
-  } else if (!isLevel0 && (String(charClass).toLowerCase().includes('战士') || String(charClass).toLowerCase().includes('fighter'))) {
-    resources['回气'] = { current: 2, max: 2, recovery: 'short:1' };
+  } else if (!isLevel0) {
+    for (const [k, v] of Object.entries(classDefaults.resources)) {
+      resources[k] = { ...v };
+    }
+  }
+  if (isPrimary && options.setResource !== undefined) {
+    const specs = Array.isArray(options.setResource) ? options.setResource : [options.setResource];
+    for (const spec of specs) {
+      const { name, resource } = parseResourceSpec(spec);
+      resources[name] = resource;
+    }
   }
 
   const charName = (isPrimary ? options.name : undefined) || preset?.name || '冒险者';
   const charId = preset?.id || charName.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '') || 'hero';
+  const heroicInspiration = (isPrimary && options.inspiration !== undefined)
+    ? (options.inspiration === true || options.inspiration === 'true' || options.inspiration === 1 || options.inspiration === '1')
+    : (isLevel0 ? true : Boolean(preset?.heroicInspiration));
 
   return {
     character: {
@@ -559,6 +825,8 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
       level,
       ac,
       speed,
+      ...(abilities ? { abilities } : {}),
+      ...(isPrimary && options.armor !== undefined ? { armor: options.armor } : (preset?.armor ? { armor: preset.armor } : {})),
       initiative: (isPrimary && options.init !== undefined)
         ? parseIntStrict(options.init, 'init', { min: -20, max: 99 })
         : null,
@@ -577,7 +845,7 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
         successes: 0,
         failures: 0
       },
-      heroicInspiration: Boolean(preset?.heroicInspiration),
+      heroicInspiration,
       concentration: null,
       spellSlots: slotsConfig,
       resources,
@@ -1733,56 +2001,92 @@ export function promoteCharacter(campaignName, options = {}) {
     throw new Error(`promote 命令仅支持从 0 级晋升到 1 级（0→1，当前等级: Lv.${member.level}）`);
   }
 
-  const newClass = options.class || (member.class && member.class !== '平民' ? member.class : '战士');
-  const rawDie = options.hitDie ? String(options.hitDie).trim().toLowerCase() : null;
-  const hitDie = (rawDie && /^d\d+$/.test(rawDie) ? rawDie : null) || inferHitDie(newClass);
-  const hitDieMax = parseInt(hitDie.slice(1), 10) || 10;
-  const conMod = options.con !== undefined
-    ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
-    : (typeof member.conMod === 'number' ? member.conMod : 2);
+  const rawClass = options.class !== undefined ? String(options.class).trim() : '';
+  if (!rawClass) {
+    throw new Error('promote 必须显式指定目标职业 (--class <职业>)，不允许猜测默认职业');
+  }
+
+  if (options.abilities !== undefined) {
+    const parsedAb = parseAbilities(options.abilities);
+    member.abilities = { ...(member.abilities || {}), ...(parsedAb || {}) };
+  }
+  const abilities = member.abilities || null;
+
+  let conMod = null;
+  if (options.con !== undefined) {
+    conMod = parseIntStrict(options.con, 'con', { min: -5, max: 10 });
+  } else if (abilities?.con !== undefined) {
+    conMod = abilityMod(abilities.con);
+  } else {
+    throw new Error('角色缺少属性数据 (abilities.con)，promote 时必须显式传入 --con <体质调整值>，不允许默认 +2');
+  }
+
+  const dexMod = options.dex !== undefined
+    ? parseIntStrict(options.dex, 'dex', { min: -5, max: 10 })
+    : (abilities?.dex !== undefined ? abilityMod(abilities.dex) : null);
+  const wisMod = options.wis !== undefined
+    ? parseIntStrict(options.wis, 'wis', { min: -5, max: 10 })
+    : (abilities?.wis !== undefined ? abilityMod(abilities.wis) : null);
+  const chaMod = options.cha !== undefined
+    ? parseIntStrict(options.cha, 'cha', { min: -5, max: 10 })
+    : (abilities?.cha !== undefined ? abilityMod(abilities.cha) : null);
+
+  const classDefaults = get2024Level1ClassDefaults(rawClass, { chaMod, strict: true });
+  const newClass = classDefaults.canonicalClass;
+  const hitDie = options.hitDie !== undefined
+    ? inferHitDie(newClass, options.hitDie)
+    : classDefaults.hitDie;
+  const hitDieMax = parseInt(hitDie.slice(1), 10) || classDefaults.hitDieSides;
   const maxHp = options.hp !== undefined
     ? parseIntStrict(options.hp, 'hp', { min: 1, max: 9999 })
     : Math.max(1, hitDieMax + conMod);
 
+  let nextAc;
+  if (options.ac !== undefined) {
+    nextAc = parseIntStrict(options.ac, 'ac', { min: 1, max: 99 });
+  } else if (options.armor !== undefined || member.armor !== undefined) {
+    const armorToUse = options.armor !== undefined ? options.armor : member.armor;
+    nextAc = computeAcFromArmor(armorToUse, {
+      abilities,
+      dexMod,
+      conMod,
+      wisMod,
+      shield: options.shield,
+      className: newClass
+    });
+    member.armor = armorToUse;
+  } else {
+    throw new Error('promote 必须通过 --armor 按护甲计算 AC 或显式指定 --ac <防御等级>，不允许猜测默认 AC');
+  }
+
   member.level = 1;
   member.class = newClass;
-  member.conMod = conMod;
-  const prevHp = member.hp.current;
-  member.hp.max = maxHp;
-  member.hp.current = maxHp;
-  member.hp.lastDelta = `+${Math.max(0, maxHp - prevHp)} 晋升Lv1`;
+  member.ac = nextAc;
+  member.hp = {
+    current: maxHp,
+    max: maxHp,
+    temp: member.hp?.temp || 0
+  };
   member.hitDice = {
     total: 1,
+    max: 1,
     current: 1,
-    remaining: 1,
     die: hitDie
   };
-
-  if (options.ac !== undefined) {
-    member.ac = parseIntStrict(options.ac, 'ac', { min: 1, max: 99 });
-  } else if (member.ac <= 10) {
-    member.ac = 14;
-  }
 
   if (options.speed !== undefined) {
     member.speed = parseIntStrict(options.speed, 'speed', { min: 0, max: 300 });
   }
 
-  if (options.slots !== undefined) {
-    member.spellSlots = parseSlots(options.slots);
-  }
+  member.spellSlots = options.slots !== undefined
+    ? parseSlots(options.slots)
+    : structuredClone(classDefaults.spellSlots);
 
   if (!member.resources || typeof member.resources !== 'object') {
     member.resources = {};
   }
-  if (newClass === '战士' && !member.resources['回气']) {
-    member.resources['回气'] = { current: 2, max: 2, recovery: 'short', recoverAmount: 1 };
-  } else if (newClass === '圣武士' && !member.resources['圣疗']) {
-    member.resources['圣疗'] = { current: 5, max: 5, recovery: 'long', recoverAmount: 5 };
-  } else if (newClass === '野蛮人' && !member.resources['狂暴']) {
-    member.resources['狂暴'] = { current: 2, max: 2, recovery: 'short', recoverAmount: 1 };
-  } else if (newClass === '吟游诗人' && !member.resources['吟游诗人激励']) {
-    member.resources['吟游诗人激励'] = { current: 3, max: 3, recovery: 'long', recoverAmount: 3 };
+  for (const [resName, resVal] of Object.entries(classDefaults.resources)) {
+    member.resources[resName] = { ...resVal };
   }
 
   if (options.setResource !== undefined) {
@@ -1933,6 +2237,7 @@ export function generateHud(state, mode = 'line', hudOptions = {}) {
   const tempStr = hp.temp > 0 ? ` (+${hp.temp}临时)` : '';
   const isBloodied = hp.current <= Math.floor(hp.max / 2) && hp.current > 0;
   const bloodied = isBloodied ? ' [浴血]' : '';
+  const inspStr = char.heroicInspiration ? ' [激励●]' : '';
   const concStr = char.concentration ? ` | 🎯专注: 【${char.concentration}】${char.concentrationCheckDc ? `(⚠️需检定 DC ${char.concentrationCheckDc})` : ''}` : '';
   const ds = char.deathSaves || { successes: 0, failures: 0 };
   const dsStr = (hp.current === 0 || ds.successes > 0 || ds.failures > 0)
@@ -1977,7 +2282,7 @@ export function generateHud(state, mode = 'line', hudOptions = {}) {
 
   return `====================================== 角色行动仪表盘 ======================================
 [当前先攻者]: ${activeTurnLabel} | 战斗第 ${state.status.round || 1} 轮
-[生命状态]: 🩸 HP: ${hp.current}/${hp.max}${deltaStr}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${concStr}${dsStr}${conds}
+[生命状态]: 🩸 HP: ${hp.current}/${hp.max}${deltaStr}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${inspStr}${concStr}${dsStr}${conds}
 [法术与职业资源]: ${slotsAndResParts.join(' | ') || '无常驻充能资源'}
 [金币与物资]: 💰 ${wealthLabel} | 🎒 ${state.inventory.items.map(i => `${i.name}x${i.count}`).join(', ')}
 [当前位置与目标]: 📍 ${state.status.location} | 🎯 ${state.status.quest}${companionsLine}${mobsDashboard}
@@ -1994,6 +2299,7 @@ ${colors.yellow}指令:${colors.reset}
   show <campaign> [options]       显示战役当前状态 (支持 --hud, --json, --veil)
   update <campaign> [options]     实时更新生命、法术位、职业资源、专注、金币、物品与状态
   rest <campaign> <--short|--long> [--dice <N>] [--con <mod>] 执行短休或长休恢复
+  promote <campaign> --class <职业> [--con <mod>] [--armor <甲>|--ac <AC>] [--cha <mod>] 0→1级转职
   next <campaign>                 推进战斗先攻指针，自动递增轮次并递减带轮次状态 (如 中毒:2)
   mob-add <campaign> [options]    遭遇战加入敌方怪物 (--name <名> --hp <血> --ac <甲> --count <数> --init <先攻>)
   mob-hit <campaign> [options]    扣减或恢复敌方生命 (--target <目标名/编号> --damage <伤害值>)
@@ -2008,6 +2314,8 @@ ${colors.yellow}初始化与小队选项 (init / add-member):${colors.reset}
   --level <level>       等级 (默认: 1)
   --hp <maxHp>          最大生命值 (默认: 12)
   --ac <ac>             防御等级 (默认: 16)
+  --armor <armor>       按 2024 护甲计算 AC (如: 皮甲, 镶钉皮甲, 链甲, 链甲+盾牌, 无甲)
+  --abilities <spec>    六维属性分 (如: str:14,dex:14,con:15,int:10,wis:12,cha:16)
   --speed <ft>          移动速度 (默认: 30，木精灵/歌利亚自动 35)
   --hit-die <dN>        显式指定生命骰 (如: d8, d10, d12)
   --slots <1:2,2:1>     初始法术位 (环阶:数量)
@@ -2097,11 +2405,25 @@ export function parseCliArgs(args) {
     else if (arg === '--temp-hp') options.tempHp = requireVal(i++, '--temp-hp');
     else if (arg === '--max-hp') options.maxHp = requireVal(i++, '--max-hp');
     else if (arg === '--ac') options.ac = requireVal(i++, '--ac');
+    else if (arg === '--armor') options.armor = requireVal(i++, '--armor');
+    else if (arg === '--shield') {
+      if (i + 1 < expanded.length && !expanded[i + 1].startsWith('-')) {
+        options.shield = expanded[++i];
+      } else {
+        options.shield = true;
+      }
+    }
+    else if (arg === '--abilities') options.abilities = requireVal(i++, '--abilities');
     else if (arg === '--speed') options.speed = requireVal(i++, '--speed');
     else if (arg === '--hit-die') options.hitDie = requireVal(i++, '--hit-die');
     else if (arg === '--death-save') options.deathSave = requireVal(i++, '--death-save');
     else if (arg === '--dice' || arg === '--hit-dice') options.dice = requireVal(i++, arg);
     else if (arg === '--con') options.con = requireVal(i++, '--con');
+    else if (arg === '--dex') options.dex = requireVal(i++, '--dex');
+    else if (arg === '--wis') options.wis = requireVal(i++, '--wis');
+    else if (arg === '--cha') options.cha = requireVal(i++, '--cha');
+    else if (arg === '--str') options.str = requireVal(i++, '--str');
+    else if (arg === '--int') options.int = requireVal(i++, '--int');
     else if (arg === '--heal') options.heal = requireVal(i++, '--heal');
     else if (arg === '--inspiration') options.inspiration = requireVal(i++, '--inspiration');
     else if (arg === '--concentrate') options.concentrate = requireVal(i++, '--concentrate');

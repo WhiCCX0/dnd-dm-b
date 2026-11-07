@@ -201,11 +201,11 @@ test('phase3 (缺口修复 2 & 3：world init 不写死开局、3 个“患”�
   );
 });
 
-test('phase3 (0 级人生模拟序章与 state.js promote) - 平民 #1623 底板建卡、严格只做 0→1 转职、满级/1级再次 promote 报错拒绝', () => {
+test('phase3 (0 级人生模拟序章、英雄激励与 state.js promote 严格校验及 2024 十二职业对齐)', () => {
   const camp = 'p3-level0-promote';
   cleanCampaign(camp);
 
-  // 1) 0 级建卡：默认采用 #1623 平民底板（level: 0, class: 平民, 1d8 生命骰, HP = max(4, 4 + conMod), AC = 10）
+  // 1) 0 级建卡：默认采用 #1623 平民底板，且 2024 规则赠送 1 点英雄激励并在 HUD 中显示 [激励●]
   const st0 = initSession(camp, {
     mode: 'D',
     level: 0,
@@ -221,31 +221,142 @@ test('phase3 (0 级人生模拟序章与 state.js promote) - 平民 #1623 底板
   assert.equal(st0.character.ac, 10);
   assert.equal(st0.character.hitDice.die, 'd8', '0 级平民生命骰应为 d8 (#1623)');
   assert.equal(st0.character.hitDice.total, 1);
+  assert.equal(st0.character.heroicInspiration, true, '0 级序章建卡时应给 1 点英雄激励');
+  assert.ok(generateHud(st0, 'line').includes('[激励●]'), '0 级角色 HUD (单行) 必须显示 [激励●]');
+  assert.ok(generateHud(st0, 'combat').includes('[激励●]'), '0 级角色 HUD (战斗仪表盘) 必须显示 [激励●]');
   assert.equal(st0.inventory.copper, 85);
   assert.equal('gold' in st0.inventory, false);
 
-  // 2) promote (0 → 1)：转职为 1 级战士 (CON +2 -> HP 12, AC 16, 1d10, 自动获得回气)
-  const st1 = promoteCharacter(camp, {
-    class: '战士',
-    con: 2,
-    ac: 16
-  });
-  assert.equal(st1.character.level, 1);
-  assert.equal(st1.character.class, '战士');
-  assert.equal(st1.character.hp.max, 12);
-  assert.equal(st1.character.hp.current, 12);
-  assert.equal(st1.character.ac, 16);
-  assert.equal(st1.character.hitDice.die, 'd10');
-  assert.equal(st1.character.hitDice.total, 1);
-  assert.equal(st1.character.hitDice.current, 1);
-  assert.ok(st1.character.resources['回气'], '转职 1 级战士应获得回气资源');
-
-  // 3) 已经是 1 级的角色再次调用 promote -> 严格拒绝（只做 0→1）！
+  // 2) promote 不许悄悄猜默认值：
+  // 2a) 不传 --class 报错
   assert.throws(
-    () => promoteCharacter(camp, { class: '圣武士' }),
-    /仅支持 0 级|0\s*→\s*1|Lv\.1/,
+    () => promoteCharacter(camp, { con: 2, ac: 16 }),
+    /--class|职业/,
+    'promote 不传 --class 必须报错，不许默认猜战士'
+  );
+  // 2b) 角色无属性数据且不传 --con 报错（不许默认 +2）
+  assert.throws(
+    () => promoteCharacter(camp, { class: '战士', ac: 16 }),
+    /--con|体质/,
+    '没有属性数据时 promote 不传 --con 必须报错，不许默认 +2'
+  );
+  // 2c) 既无护甲也未显式传 --ac 时报错（删除“AC <= 10 就改成 14”）
+  assert.throws(
+    () => promoteCharacter(camp, { class: '战士', con: 2 }),
+    /--ac|--armor|护甲|AC/,
+    '没有护甲且未传 --ac 时 promote 必须报错，不许把 AC<=10 悄悄改成 14'
+  );
+  // 2d) 吟游诗人无魅力属性且未传 --cha 时报错
+  assert.throws(
+    () => promoteCharacter(camp, { class: '吟游诗人', con: 1, ac: 13 }),
+    /--cha|魅力/,
+    '吟游诗人激励次数取决于魅力调整值，无属性数据时必须要求 --cha'
+  );
+
+  // 3) 角色有属性数据 + 护甲时：体质加值从属性算，AC 按护甲算
+  const attrCamp = 'p3-level0-attr-armor';
+  cleanCampaign(attrCamp);
+  initSession(attrCamp, {
+    mode: 'D',
+    level: 0,
+    name: '薇拉',
+    abilities: { str: 10, dex: 14, con: 15, int: 12, wis: 10, cha: 16 },
+    copper: 100
+  });
+  const promotedBard = promoteCharacter(attrCamp, {
+    class: '吟游诗人',
+    armor: '皮甲' // 皮甲 11 + DEX(+2) = 13；CON 15(+2) -> HP 8+2=10；CHA 16(+3) -> 激励 3 次；1环法术位 2
+  });
+  assert.equal(promotedBard.character.level, 1);
+  assert.equal(promotedBard.character.class, '吟游诗人');
+  assert.equal(promotedBard.character.hp.max, 10);
+  assert.equal(promotedBard.character.ac, 13);
+  assert.deepEqual(promotedBard.character.spellSlots, { 1: { max: 2, current: 2 } });
+  assert.deepEqual(promotedBard.character.resources['吟游诗人激励'], {
+    current: 3,
+    max: 3,
+    recovery: 'long:all'
+  });
+
+  // 魅力为负值（如 CHA 8 -> -1）时，吟游诗人激励次数保底为 1，且 --slots 可用于覆盖默认法术位
+  const lowChaCamp = 'p3-level0-bard-lowcha';
+  cleanCampaign(lowChaCamp);
+  initSession(lowChaCamp, {
+    mode: 'D',
+    level: 0,
+    name: '低魅歌者',
+    abilities: { str: 10, dex: 12, con: 12, int: 10, wis: 10, cha: 8 }
+  });
+  const lowChaBard = promoteCharacter(lowChaCamp, {
+    class: '吟游诗人',
+    armor: '镶钉皮甲', // 12 + 1 = 13
+    slots: '1:3' // 显式覆盖
+  });
+  assert.equal(lowChaBard.character.resources['吟游诗人激励'].max, 1, '魅力调整值 <= 0 时吟游诗人激励次数最少为 1');
+  assert.equal(lowChaBard.character.spellSlots[1].max, 3, '--slots 应可覆盖默认法术位');
+
+  // 4) 已经是 1 级的角色再次调用 promote -> 严格拒绝（只做 0→1）！
+  assert.throws(
+    () => promoteCharacter(attrCamp, { class: '战士', ac: 16 }),
+    /仅支持从 0 级|0\s*→\s*1|Lv\.1/,
     'promote 必须严格限制只做 0→1，对 1 级及以上角色必须抛错拒绝'
   );
+
+  // 5) 全量 12 个 2024 核心职业：promote (0→1) 后的 HP、生命骰、法术位、资源、AC 与正常 1 级建卡 100% 一致
+  const all2024Classes = [
+    { cls: '野蛮人', armor: '无甲', expectedDie: 'd12', expectedSlots: 0, expectedRes: { '狂暴': 2 } },
+    { cls: '吟游诗人', armor: '皮甲', expectedDie: 'd8', expectedSlots: 2, expectedRes: { '吟游诗人激励': 3 } },
+    { cls: '牧师', armor: '链甲+盾牌', expectedDie: 'd8', expectedSlots: 2, expectedRes: {} },
+    { cls: '德鲁伊', armor: '皮甲+盾牌', expectedDie: 'd8', expectedSlots: 2, expectedRes: {} },
+    { cls: '战士', armor: '链甲', expectedDie: 'd10', expectedSlots: 0, expectedRes: { '回气': 2 } },
+    { cls: '武僧', armor: '无甲', expectedDie: 'd8', expectedSlots: 0, expectedRes: {} },
+    { cls: '圣武士', armor: '链甲+盾牌', expectedDie: 'd10', expectedSlots: 2, expectedRes: { '圣疗': 5 } },
+    { cls: '游侠', armor: '镶钉皮甲', expectedDie: 'd10', expectedSlots: 2, expectedRes: { '宿敌': 2 } },
+    { cls: '游荡者', armor: '皮甲', expectedDie: 'd8', expectedSlots: 0, expectedRes: {} },
+    { cls: '术士', armor: '无甲', expectedDie: 'd6', expectedSlots: 2, expectedRes: { '先天术法': 2 } },
+    { cls: '魔契师', armor: '皮甲', expectedDie: 'd8', expectedSlots: 1, expectedRes: {} },
+    { cls: '法师', armor: '无甲', expectedDie: 'd6', expectedSlots: 2, expectedRes: { '奥术回想': 1 } }
+  ];
+  const sampleAbilities = { str: 14, dex: 14, con: 15, int: 16, wis: 14, cha: 16 }; // DEX+2, CON+2, INT+3, WIS+2, CHA+3
+
+  for (const item of all2024Classes) {
+    const cProm = `p3-12cls-prom-${item.cls}`;
+    const cInit = `p3-12cls-init-${item.cls}`;
+    cleanCampaign(cProm);
+    cleanCampaign(cInit);
+
+    initSession(cProm, {
+      mode: 'D',
+      level: 0,
+      name: `测试_${item.cls}`,
+      abilities: sampleAbilities
+    });
+    const afterPromote = promoteCharacter(cProm, {
+      class: item.cls,
+      armor: item.armor
+    }).character;
+
+    const directLv1 = initSession(cInit, {
+      mode: 'D',
+      level: 1,
+      name: `测试_${item.cls}`,
+      class: item.cls,
+      abilities: sampleAbilities,
+      armor: item.armor
+    }).character;
+
+    assert.equal(afterPromote.hitDice.die, item.expectedDie, `${item.cls} 生命骰应为 ${item.expectedDie}`);
+    assert.equal(afterPromote.spellSlots[1].max, item.expectedSlots, `${item.cls} 1级一环法术位应为 ${item.expectedSlots}`);
+    for (const [rName, rMax] of Object.entries(item.expectedRes)) {
+      assert.equal(afterPromote.resources[rName]?.max, rMax, `${item.cls} 1级资源【${rName}】上限应为 ${rMax}`);
+    }
+
+    assert.deepEqual(afterPromote.hp, directLv1.hp, `${item.cls} promote 后 HP 必须与正常 1 级建卡一致`);
+    assert.deepEqual(afterPromote.hitDice, directLv1.hitDice, `${item.cls} promote 后 hitDice 必须与正常 1 级建卡一致`);
+    assert.deepEqual(afterPromote.spellSlots, directLv1.spellSlots, `${item.cls} promote 后法术位必须与正常 1 级建卡一致`);
+    assert.deepEqual(afterPromote.resources, directLv1.resources, `${item.cls} promote 后职业资源必须与正常 1 级建卡一致`);
+    assert.equal(afterPromote.ac, directLv1.ac, `${item.cls} promote 后 AC 必须与正常 1 级建卡一致`);
+  }
 });
 
 test('phase3 (lookup.js lore) - 默认检索公开切片且绝不读取 secret/，显式传 --gm 时才检索 secret/gm-dossier.md', () => {
@@ -282,7 +393,7 @@ test('phase3 (lookup.js lore) - 默认检索公开切片且绝不读取 secret/�
   }
 });
 
-test('phase3 (首屏分流、MODE.md、start-form.md、续局规则与上下文 <= 30KB 字节预算门禁)', (t) => {
+test('phase3 (首屏分流、MODE.md 主持原则、start-form.md、SKILL.md 新增行数 <= 15 与上下文 <= 30KB 字节预算门禁)', (t) => {
   const modePath = path.join(ROOT_DIR, 'worlds', 'jianhuo', 'MODE.md');
   const capsulePath = path.join(ROOT_DIR, 'worlds', 'jianhuo', 'capsule.md');
   const startFormPath = path.join(ROOT_DIR, 'worlds', 'jianhuo', 'start-form.md');
@@ -293,7 +404,7 @@ test('phase3 (首屏分流、MODE.md、start-form.md、续局规则与上下文 
   assert.ok(fs.existsSync(capsulePath), 'worlds/jianhuo/capsule.md 必须存在');
   assert.ok(fs.existsSync(startFormPath), 'worlds/jianhuo/start-form.md 必须存在');
 
-  // 1) MODE.md 行数严格在 80–100 行之间，且第一段是西方奇幻总锚
+  // 1) MODE.md 行数严格在 80–100 行之间，第一段是西方奇幻总锚，且覆盖 W4 全部 10 条主持原则
   const modeText = fs.readFileSync(modePath, 'utf8');
   const modeLines = modeText.trimEnd().split(/\r?\n/);
   assert.ok(
@@ -305,9 +416,41 @@ test('phase3 (首屏分流、MODE.md、start-form.md、续局规则与上下文 
     firstParagraphLines.includes('西方奇幻'),
     `MODE.md 第一段必须为西方奇幻总锚，实际首段: ${firstParagraphLines}`
   );
-  assert.ok(modeText.includes('lookup.js lore'), 'MODE.md 必须包含 lookup.js lore 检索规范');
-  assert.ok(modeText.includes('promote'), 'MODE.md 必须包含 0 级序章 promote 升 1 级规范');
-  assert.ok(modeText.includes('world.js status'), 'MODE.md 必须包含 world.js status 状态同步与续局规范');
+  const requiredModePrinciples = [
+    '三句话',
+    '3 个可互动对象',
+    '五分钟内要表态',
+    '求财',
+    '势力委托',
+    '神秘异象',
+    '你站在十字路口',
+    '不走铁轨',
+    '不预设结局',
+    '至少两种解法',
+    '不靠战斗',
+    '三条线索',
+    '失败也推进局面',
+    '时钟走满改变的是背景',
+    '不派不可战胜的追兵堵门',
+    '高阶威胁对低级角色只以影响和传闻出现',
+    '小人物视角卷入大事件',
+    '伏笔与余波是指导，不是硬指标',
+    '每次长休后跑',
+    '抵达新聚落先',
+    'canon --add',
+    '当回合更新',
+    '遭遇按实际人数算',
+    '招募同伴或雇佣兵',
+    '只借数据壳',
+    '换接剑火三大来源',
+    '记录来源',
+    'lookup.js lore',
+    'promote',
+    'world.js status'
+  ];
+  for (const kw of requiredModePrinciples) {
+    assert.ok(modeText.includes(kw), `MODE.md 必须包含 W4 主持原则或要素: "${kw}"`);
+  }
 
   // 2) start-form.md 覆盖世界参数、地区/地点/势力、0级序章/1级开局、★代价与◆限制
   const startFormText = fs.readFileSync(startFormPath, 'utf8');
@@ -315,7 +458,7 @@ test('phase3 (首屏分流、MODE.md、start-form.md、续局规则与上下文 
     assert.ok(startFormText.includes(kw), `start-form.md 必须包含要素: ${kw}`);
   }
 
-  // 3) 首屏分流与续局规则检查
+  // 3) 首屏分流、续局规则与 SKILL.md 本阶段新增行数 <= 15 行检查
   const sessionZeroText = fs.readFileSync(sessionZeroPath, 'utf8');
   assert.ok(
     sessionZeroText.includes('路线一') && sessionZeroText.includes('路线二') && sessionZeroText.includes('剑火纪元'),
@@ -331,6 +474,20 @@ test('phase3 (首屏分流、MODE.md、start-form.md、续局规则与上下文 
     skillText.includes('MODE.md') && skillText.includes('world.js status'),
     'SKILL.md 第 6 节断点续跑必须写明：先读战役元数据，mode: "D" 则加载 MODE.md 并跑 world status'
   );
+
+  // 检查 SKILL.md 相比阶段 2 结束提交 (97bd3da) 的新增行数（+ 行与净增行数均 <= 15 行）
+  const diffRes = spawnSync('git', ['diff', '--numstat', '97bd3da', '--', 'SKILL.md'], {
+    cwd: ROOT_DIR,
+    encoding: 'utf8'
+  });
+  if (diffRes.status === 0 && diffRes.stdout.trim()) {
+    const [addedStr] = diffRes.stdout.trim().split(/\s+/);
+    const addedLines = Number(addedStr);
+    assert.ok(
+      addedLines <= 15,
+      `SKILL.md 本阶段新增行数必须 <= 15 行，实际 git diff 新增 (+): ${addedLines} 行`
+    );
+  }
 
   // 4) 记录并断言 D 类开局额外读入的 MODE.md + capsule.md + start-form.md 实际字节数 <= 30 KB (30,720 bytes)
   const modeBytes = Buffer.byteLength(modeText, 'utf8');

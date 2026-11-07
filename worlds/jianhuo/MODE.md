@@ -2,82 +2,87 @@
 
 **谱系定位（西方奇幻风格总锚）**：本世界属于**西方奇幻传统**（《龙与地下城》《指环王》《魔兽世界》一脉）——位面宇宙与多种族共存是它的骨架，魔法作为被社会管理的力量是它的日常，旧秩序崩解的余烬史诗感是它的基调：精灵的长寿与疏离、矮人的石厅与锻炉、兽人的部族与战歌、侏儒的魔导工学、魔族的契约与阶序、王座厅、纹章、挂毯、石砌城堡、公会、法师塔、神殿、集市、酒馆、佣兵——而非任何东方式宫廷、庙堂或武侠修真意象。这个世界有自己的具体质感（浮空城的粮食软肋、侏儒的魔导工学、五道法统的社会位置），一切描写从设定推导，严禁串味。
 
-## 一、裁决优先级与开放框架铁律
+## 一、裁决优先级、开放框架与外部借壳三原则
 1. **裁决四层优先级**：
-   - 第一优先：**D&D 2024 官方规则与数值引擎**（动作经济、法术位、护甲熟练、武器精通、死亡豁免与复活法术，严禁发明法术枯竭扣值、铁护手禁施法或法则即死）。
+   - 第一优先：**D&D 2024 官方规则与数值引擎**（动作经济、法术位、护甲受训、武器精通、死亡豁免与复活法术，严禁发明法术枯竭扣值、铁护手禁施法或法则即死）。
    - 第二优先：**当前战役存档既定事实（`world.json` 的 `canon` 与 `state.json`）**。
    - 第三优先：**剑火纪元按需设定切片（`worlds/jianhuo/lore/*.md` 与 `mapping.md`）**。
    - 第四优先：**主持 DM 与玩家的桌边即兴共创**（一旦定案立即通过 `canon --add` 固化入档）。
-2. **框架开放不写死**：
-   - 各地区、组织与教会均采用“骨架 / 素材 / 矛盾与钩子 / 留白问题”四段结构。
-   - 除骨架定论外，素材、典型人物与留白问题均由 DM 按本局走向自由裁夺。
-   - 已知大陆边缘、万门之城门后与位面深处始终留白开放，绝不写死固定答案。
+2. **开放框架铁律**：
+   - 各地区、组织与教会均按“骨架 / 素材 / 矛盾与钩子 / 留白问题”展开；除骨架定论外，素材、人物与留白问题均由 DM 与玩家在跑团中自由裁定。
+   - 已知大陆边缘、万门之城门后与各位面深处始终留白开放，绝不写死固定答案。
+3. **外部规则书内容的借壳三原则**：
+   - **只借数据壳**：选用 `mapping.md` 之外的 `rules.db` 物种、子职、法术或怪物时，数值、动作、豁免 DC 与抗性完全照搬原数据卡，不改强弱。
+   - **换接剑火三大来源**：将设定外衣换接至剑火本土三大超凡来源——① 浮空城高塔奥术与侏儒魔导工学、② 九神教会与古神残响、③ 渊喉裂隙魔潮与外层虚空。
+   - **记录来源**：首次登场时注明借用的 `rules.db` 原条目名称与 `#编号`，并通过 `world.js canon --add` 记录入档。
 
-## 二、D 模式开局与续局标准流程
-1. **新开局加载顺序（严控上下文体积 ≤ 30 KB）**：
-   - 玩家在首屏回复 `D`（路线二：剑火纪元开放沙盒）后，加载 `worlds/jianhuo/MODE.md`、`worlds/jianhuo/capsule.md` 与 `worlds/jianhuo/start-form.md`。
-   - 严禁在开局一次性通读 `worlds/jianhuo/lore/*.md` 全卷或 `worlds/jianhuo/secret/gm-dossier.md`。
-   - 根据玩家填写的开局表单（地域/地点可取自设定原名，也可完全自定义，绝不写死单一默认城镇），依次执行：
-     - `node <SKILL_DIR>/scripts/state.js init <campaign> --mode D --level <0|1> --name "<姓名>" --class "<职业>" --copper <初始铜币> --location "<开局地点>"`
-     - `node <SKILL_DIR>/scripts/world.js init <campaign> --seed <种子> --region "<开局大区>" --location "<开局地点>" --factions "<周边势力>" --cost "<★代价>" --limit "<◆限制>"`
-   - `world.js init` 自动完成三件事：
-     - 在开局地区生成 **3 个“患”级局部问题**（3 个局部威胁时钟 `clk:trouble_1..3` + 3 条账本记录 `led:trouble_1..3`）；
-     - 将 **★代价**（`--cost`）与 **◆限制**（`--limit`）转化为账本记录与局部时钟；
-     - 在**演化八线**中仅启动与开局地区相关的 **3–4 条**（`active`），其余 4–5 条保持待启动（`paused`）。
-2. **续局标准流程（先读元数据，按模式分流）**：
-   - 续局时先执行 `node <SKILL_DIR>/scripts/state.js show <campaign> --json` 检查战役元数据 `meta.mode`。
-   - 若 `meta.mode === "D"`：
-     - 立即加载 `worlds/jianhuo/MODE.md` 与 `worlds/jianhuo/capsule.md`；
-     - 运行 `node <SKILL_DIR>/scripts/world.js status <campaign>`（输出严格控制在 15 行以内，玩家视图绝不含 `secret`）；
-     - 结合 HUD 与世界态势衔接上一幕继续主持。
-   - 若非 D 模式：按经典 A/B/C 流程直接读取 HUD 续局，不加载任何剑火世界文件。
+## 二、沙盒主持核心原则（W4 铁律）
+1. **第一场景规范**：
+   - 开场**三句话**内交代清楚具体地点、正在发生的事和现场气氛，绝不用“你站在十字路口”式的空泛开场。
+   - 场景内布置至少 **3 个可互动对象**（人物、陈设、机关或异状），并带出一件**“五分钟内要表态”的近身小事**（如盘查路引、催讨小额旧账、学徒工伤或摊位争执）。
+   - 近身小事处理完后，自然引出**三条不同口味的线头**：一条**求财**（押运、打捞、悬赏）、一条**势力委托**（行会、教会、高塔或地方大公）、一条**神秘异象**（裂隙微震、遗迹残物、失踪怪谈）。
+2. **不走铁轨**：
+   - 绝不预设结局或强迫玩家走固定剧情线；**每个问题至少两种解法，其中至少一种不靠战斗**（交涉、潜行、买通、律法、魔导巧思或借刀杀人）。
+3. **三条线索原则**：
+   - 任何推动局势的**重要信息给三条线索**（分置在不同 NPC 口风、现场物证与行会/神殿卷宗中），防止单次检定失手卡死。
+4. **失败也推进局面**：
+   - 检定失败绝不等于“什么都没发生，请重骰”，而是**失败也推进局面**——虽然未能无损达成意图，但以付出额外铜币/时间、暴露行迹、欠下人情或惊动巡夜队的方式把事态推向下一幕。
+5. **时钟走满改变背景而非强行堵门**：
+   - **时钟走满改变的是背景**（粮价暴涨、城门戒严、势力版图易手、街巷涌现新传闻），绝**不派不可战胜的追兵堵门**强杀玩家。
+6. **高低阶威胁分层**：
+   - **高阶威胁对低级角色只以影响和传闻出现**（如天象异变、难民潮、高塔征调令）；**低级角色可以以小人物视角卷入大事件**（如在大军过境前抢运一批禁书或护送一名证人）。
+7. **伏笔与余波弹性**：
+   - **伏笔与余波是指导，不是硬指标**——顺应玩家兴趣自然浮现，不为凑数而强行塞入每回合叙事。
+8. **单人开局平衡**：
+   - **单人开局**：**遭遇按实际人数算**（用 `state.js encounter-calc` 严控行动经济与 XP 阈值）；在序章或 1 级早期**自然提供招募同伴或雇佣兵的机会，不强迫**入队。
 
-## 三、双状态机职责边界与统一铜币记账
-1. **职责严明、零冗余字段**：
-   - `state.js`（`state.json`）专管角色生命、AC、法术位、职业资源、先攻轮次、背包与统一铜币 `inventory.copper`。
-   - `world.js`（`world.json`）专管标准历法 `calendar`、确定性种子 `rng`、地点 `locations`、势力 `factions`、NPC 生死与态度 `npcs`、局势时钟与演化八线 `clocks`、代价账本 `ledger`、既定事实 `canon` 与传闻 `rumors`。
-2. **钱只记一套账（统一铜币 `inventory.copper`）**：
-   - D 模式存档仅使用 `inventory.copper`（整数铜币，`1 gp = 10 sp = 100 cp`），绝不同时存储 `inventory.gold`。
-   - 执行 `node <SKILL_DIR>/scripts/state.js update <campaign> --copper <+/-N>` 或 `--gold <+/-N>` 时，D 模式均自动换算并作用于 `inventory.copper`，HUD 自动折算展示为 `Xgp Ysp Zcp`。
-   - A/B/C 经典模式的 `inventory.gold` 行为保持 100% 原样不变。
-3. **休息与时间双文件事务**：
-   - 在 D 模式下执行 `node <SKILL_DIR>/scripts/state.js rest <campaign> --short`（推进 `1h`）或 `--long`（推进 `8h`）时，底层自动通过 `pending-op.json` 双文件事务协议联动推进 `world.json` 历法与到期时钟。
-   - 旅途、潜伏或跨日等待时，显式运行 `node <SKILL_DIR>/scripts/world.js time <campaign> --advance <1h|8h|1d|1tenday|1m>`。
+## 三、三个硬触发点与保密纪律
+1. **三个硬触发点（必须当场执行脚本）**：
+   - **触发点 ①**：**每次长休后跑 `world status`**（`node <SKILL_DIR>/scripts/world.js status <campaign>`），向玩家呈现最新历法、天气征兆与推进的局势风声。
+   - **触发点 ②**：**抵达新聚落先 `lookup lore`**（如 `node <SKILL_DIR>/scripts/lookup.js lore "圣座同盟" --brief`）；若设定切片没写该聚落，即兴生成后**立刻 `canon --add`** 固化正典。
+   - **触发点 ③**：**与具名 NPC 实质交易/结仇/立约后当回合更新 `npc` 与 `ledger`**（调用 `world.js npc --update` 与 `world.js ledger --add/--update`）。
+2. **认知隔断与反剧透纪律**：
+   - `lookup.js lore` 默认只读公开切片，绝不读 `secret/`；仅当 DM 在幕后推演深层异变诱因时才可调用 `--gm`，且严禁向玩家说出内档候选大劫原名。
+   - 街巷打听运行 `world.js rumor --draw`（自动按聚落 `凡俗/文明/超凡/异界/诸界` 门槛过滤）。
 
-## 四、序章 0 级平民模式与 0→1 阶晋升
-1. **0 级凡人序章（可选）**：
-   - 玩家若选择 0 级微末开局，使用 `--level 0` 初始化角色（底层绑定 `#1623` **平民 Commoner** 基底：`HP = max(4, 4 + CON调整值)`、基础 `AC = 10`、`1d8` 生命骰、无职业法术位）。
-   - 序章聚焦凡俗生存、行会学徒试炼或边镇危机，遭遇战使用 `node <SKILL_DIR>/scripts/state.js encounter-calc --party 0 --crs <CR>` 严格把控低烈度威胁（单次遭遇 XP 预算：简单 25 / 中等 50 / 困难 75）。
-2. **生死蜕变与正式晋升（仅限 `0 → 1`）**：
-   - 当角色渡过序章高潮（如立下契约、觉醒血脉、通过行会授印或死里逃生），运行：
-     - `node <SKILL_DIR>/scripts/state.js promote <campaign> --class "<正式职业>" [--hp <Lv1最大HP>] [--ac <新AC>] [--slots <法术位>]`
-   - `promote` 严格只处理 `0 → 1` 级晋升，自动授予 Lv1 职业生命骰与生命上限；1 级之后的常规升级仍走标准属性更新流程。
+## 四、开局、续局、0 级序章与双状态机边界
+1. **新开局（三文件合计 ≤ 30 KB）**：
+   - 玩家首屏回复 `D` 后，仅加载 `MODE.md`、`capsule.md` 与 `start-form.md`。
+   - 开局地区、地点与势力由开局表单给出（可用设定原名或完全自定义）。`world.js init` 自动在开局地区生成 **3 个“患”级局部问题**（时钟 + 账本）、转化 **★代价** 与 **◆限制**，并在演化八线中仅启动与该地区相关的 **3–4 条**（其余待启动，跨区抵达或被波及时用 `clock --resume` 唤醒并对齐 `nextTick`）。
+2. **续局标准流程**：
+   - 先执行 `node <SKILL_DIR>/scripts/state.js show <campaign> --json` 读 `meta.mode`；若为 `"D"`，立即加载 `MODE.md` 与 `capsule.md` 并运行 `node <SKILL_DIR>/scripts/world.js status <campaign>`（输出 ≤ 15 行，零 `secret`）。
+3. **0 级凡人序章与 `promote`（严格 0→1，严禁猜默认值）**：
+   - `--level 0` 采用 `#1623` **平民**底板（`1d8` 生命骰、`HP = max(4, 4 + CON调整值)`、`AC = 10`），**开局自动赠送 1 点英雄激励并在 HUD 显示 `[激励●]`**。
+   - 渡过序章高潮升入 1 级时运行 `node <SKILL_DIR>/scripts/state.js promote <campaign> --class "<2024职业>" [--con <CON加值>] [--armor "<护甲>" | --ac <AC>] [--cha <CHA加值>] [--slots <覆盖法术位>]`：
+     - `--class` 必填；体质加值从角色属性 `abilities.con` 算，无属性数据时必须显式传 `--con`（绝不默认 `+2`）；
+     - AC 按 `--armor` 护甲算或显式传 `--ac`（绝不将 `AC ≤ 10` 盲目改成 `14`）；
+     - 自动按 2024 的 1 级职业规则赋予生命骰、最大 HP、法术位（全施法者与圣武士、游侠均为 `1:2`，魔契师 `1:1`，`--slots` 仅用于覆盖）与职业资源（如吟游诗人激励次数 = 魅力加值且最少 1 次、战士回气 2、野蛮人狂暴 2、圣武士圣疗 5、游侠宿敌 2、术士先天术法 2、法师奥术回想 1）。
+4. **双状态机职责与统一铜币记账**：
+   - `state.js` 管角色战斗数值、背包与统一铜币 `inventory.copper`（D 模式绝不存 `gold` 字段，`--gold` 与 `--copper` 均换算作用于 `copper`；A/B/C 的 `gold` 不变）。
+   - `world.js` 管历法、种子、地点、势力、NPC 生死（阵亡须 `--alive false`，非合法复活法术带 `--revive` 严禁返场）、时钟、账本、正典与传闻；D 模式 `state.js rest` 自动走 `pending-op.json` 双文件事务推进世界时间。
 
-## 五、按需设定检索、演化八线唤醒与保密纪律
-1. **按需切片检索（`lookup.js lore`）**：
-   - 当玩家踏入新国度、接触特定教会/结社或追查民俗黑话时，运行：
-     - `node <SKILL_DIR>/scripts/lookup.js lore "<关键词>" --brief`
-   - 默认模式严禁读取 `worlds/jianhuo/secret/`；仅当 DM 在幕后推演深层异变诱因且确需核对候选真相时，才在内部运行 `node <SKILL_DIR>/scripts/lookup.js lore "<关键词>" --gm`，且严禁将内档原词直接输出给玩家。
-2. **演化八线与跨区唤醒**：
-   - 开局仅启动与所在区域直接相关的 3–4 条演化线；当玩家跨区远行抵达新国度，或某条活跃演化线触发跨线联动波及待启动线时，使用 `node <SKILL_DIR>/scripts/world.js clock <campaign> --resume --id <trackId>` 唤醒对应演化线（恢复时 `nextTick` 自动对齐至当前时间之后，绝不补掷历史漏骰）。
-3. **传闻认知过滤与神谕表抽取**：
-   - 街巷打听运行 `node <SKILL_DIR>/scripts/world.js rumor <campaign> --draw --location "<当前地点>"`（自动按地点 `凡俗/文明/超凡/异界/诸界` 门槛过滤）。
-   - 开放式未知悬念或随机风味事件运行 `node <SKILL_DIR>/scripts/world.js oracle <campaign> --question "<问题>" --odds <unlikely|even|likely> [--table <omen|travel|tavern|settlement_trouble>]`。
-4. **NPC 真实生死与定论登记**：
-   - 重要人物通过 `node <SKILL_DIR>/scripts/world.js npc <campaign> --generate --location "<当前地点>"` 生成；一旦阵亡必须执行 `--update --alive false`，除非施展 2024 合法复活法术并带 `--revive`，严禁无故返场。
-   - 桌边新确立的聚落、契约或领主更替，随时执行 `node <SKILL_DIR>/scripts/world.js canon <campaign> --add --entity "<实体>" --predicate "<属性>" --value "<定论>"` 记入正典。
+## 五、D 模式工具速查与每回合 6 步自检
+1. **D 模式核心脚本速查**：
+   - **初始化角色与世界**：
+     - `node <SKILL_DIR>/scripts/state.js init <campaign> --mode D --level <0|1> --name "<姓名>" --copper <铜币> --location "<地点>"`
+     - `node <SKILL_DIR>/scripts/world.js init <campaign> --seed <种子> --region "<大区>" --location "<地点>" --factions "<势力>" --cost "<★代价>" --limit "<◆限制>"`
+   - **查看世界态势摘要（≤ 15 行，玩家视图零 secret）**：
+     - `node <SKILL_DIR>/scripts/world.js status <campaign>`
+   - **推进时间与双文件休整**：
+     - `node <SKILL_DIR>/scripts/state.js rest <campaign> <--short|--long>`
+     - `node <SKILL_DIR>/scripts/world.js time <campaign> --advance <1h|8h|1d|1tenday|1m>`
+   - **局势时钟、代价账本与正典登记**：
+     - `node <SKILL_DIR>/scripts/world.js clock <campaign> <--add|--advance|--pause|--resume> --id <id>`
+     - `node <SKILL_DIR>/scripts/world.js ledger <campaign> <--add|--update> --id <id>`
+     - `node <SKILL_DIR>/scripts/world.js canon <campaign> <--add|--check> --entity "<实体ID>"`
+   - **NPC、街巷传闻、神谕裁决与按需切片检索**：
+     - `node <SKILL_DIR>/scripts/world.js <npc|rumor|oracle> <campaign> ...`
+     - `node <SKILL_DIR>/scripts/lookup.js lore "圣座同盟" --brief`
+2. **每回合主持 6 步闭环自检**：
+   - ① **查状态**：涉及战斗、资源或跨日时，先核对 `state.js` HUD 与 `world.js status`。
+   - ② **明代价**：动用违禁法统、贵族人情、高利贷或神殿特赦时，当回合写入 `world.js ledger`。
+   - ③ **推时间**：短休/长休走 `state.js rest`，旅途等待走 `world.js time`，呈现到期时钟与逾期账本回响。
+   - ④ **定事实**：桌边新聚落、重要 NPC 生死或政治定论，当回合写入 `world.js canon` 与 `npc`。
+   - ⑤ **守视角**：向玩家只呈现可感知的表象、物价与传闻，绝不剧透内档候选大劫原名。
+   - ⑥ **给钩子**：每幕结尾结合当地“患”级时钟、未结账本或演化八线风声，给出 2–3 个有代价的行动方向。
 
-## 六、每回合主持自检清单（6 步闭环）
-1. **查状态**：涉及战斗、资源或跨日时，先核对 `state.js` HUD 与 `world.js status`。
-2. **明代价**：动用违禁法统、贵族人情、高利贷或神殿特赦时，通过 `world.js ledger --add` 记入未结账本。
-3. **推时间**：短休/长休走 `state.js rest`，长途跋涉或等待走 `world.js time --advance`，关注到期时钟与逾期账本回响。
-4. **定事实**：桌边新出现的地名、重要 NPC 生死或政治定论，立即写入 `world.js canon --add`。
-5. **守视角**：向玩家呈现的永远是可感知的表象、物价、征兆与酒馆传闻，绝不剧透内档候选大劫名称。
-6. **给钩子**：每幕结尾结合当前地点“患”级时钟、未结账本或演化八线风声，给出 2–3 个有分量、有代价的行动方向。
- 
-### 附：常用 D 模式世界指令速查
-- 查看世界态势摘要（≤15行）：`node <SKILL_DIR>/scripts/world.js status <campaign>`
-- 新增局部威胁/机遇时钟：`node <SKILL_DIR>/scripts/world.js clock <campaign> --add --id clk:x --name "<名称>" --cadence <day|tenday|month> --max 4`
-- 登记人情/债务/代价/把柄：`node <SKILL_DIR>/scripts/world.js ledger <campaign> --add --id led:x --type <人情|债务|代价|把柄|线索> --summary "<内容>"`
-- 核查实体既定正典事实：`node <SKILL_DIR>/scripts/world.js canon <campaign> --check --entity "<实体ID>"`
-- 按需检索剑火设定切片：`node <SKILL_DIR>/scripts/lookup.js lore "<设定关键词>" --brief`

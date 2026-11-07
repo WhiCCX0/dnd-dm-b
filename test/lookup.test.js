@@ -293,6 +293,13 @@ test('lookup (R12.1 & R12.2) - 全仓库 Markdown 文档示例命令覆盖 <SKIL
               res.entry.url.toLowerCase().includes(query.toLowerCase()),
               `文档 ${relFile}:${lineIdx + 1} [module "${query}"] 返回的模组名 (${res.moduleName}) 与查询词不匹配`
             );
+          } else if (cmd === 'lore') {
+            const qLower = query.toLowerCase();
+            const sliceText = `${res.entry.title || ''}\n${res.entry.content || ''}\n${res.entry.brief || ''}`.toLowerCase();
+            assert.ok(
+              sliceText.includes(qLower),
+              `文档 ${relFile}:${lineIdx + 1} [lore "${query}"] 命中的设定切片 (#${res.entry.id} "${res.entry.title}") 必须包含查询词`
+            );
           } else {
             const qLower = query.toLowerCase();
             const row = db.prepare('SELECT id, title, title_en, aliases FROM entries WHERE id = ?').get(res.entry.id);
