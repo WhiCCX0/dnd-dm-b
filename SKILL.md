@@ -1,6 +1,6 @@
 ---
 name: dnd-dm-b
-description: Complete D&D 5th Edition Chinese Dungeon Master Skill (Version B). Integrated with the massive Chinese D&D 5e compendium (5echm, 8,910 deduplicated entries & DMG 2024 full sample adventures + 38 classic modules). Features smart UTF-8/GBK rules lookup, cross-platform dice engine, Chinese 2024 premade characters, and tactical ASCII battle maps.
+description: Complete D&D 5th Edition (2024) Chinese Dungeon Master & Text RPG Skill (Version B, 地下城主 / 文字 RPG / 剑火纪元沙盒). Integrated with the massive Chinese D&D 5e compendium (5echm, 8,910 deduplicated entries & DMG 2024 full sample adventures + 38 classic modules) and the original Jianhuo Era (剑火纪元) open-world sandbox. Features smart UTF-8/GBK rules lookup, cross-platform dice engine, world state & clock engine, Chinese 2024 premade characters, and tactical ASCII battle maps.
 version: 2.2.0
 ---
 

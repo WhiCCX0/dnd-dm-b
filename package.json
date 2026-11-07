@@ -1,7 +1,7 @@
 {
   "name": "dnd-dm-b-skill",
   "version": "2.2.0",
-  "description": "D&D 5e (2024/2025 修订版 + 全扩展) 中文地下城主 (DM) 技能：整合 DND5e 不全书 8,827 条去重规则库、DMG 2024 五大完整冒险与 38 部经典模组",
+  "description": "D&D 5e (2024/2025 修订版 + 全扩展) 中文地下城主 (DM) 与文字 RPG 技能：整合 DND5e 不全书 8,910 条去重规则库、DMG 2024 五大完整冒险、38 部经典模组与《剑火纪元》开放世界沙盒",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,6 +29,8 @@
     "dungeon-master",
     "trpg",
     "ttrpg",
+    "文字RPG",
+    "剑火纪元",
     "antigravity-skill"
   ]
 }
