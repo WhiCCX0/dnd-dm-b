@@ -163,5 +163,24 @@
       "delta": 1,
       "summary": "王室继承危机进入宫廷摊牌，圣座同盟内部各派因加冕正统性问题争端加剧"
     }
-  ]
+  ],
+  "regionTracks": {
+    "圣座同盟": ["track:schism", "track:succession", "track:war", "track:trade"],
+    "灰岩": ["track:schism", "track:succession", "track:war", "track:trade"],
+    "高塔议会": ["track:doctrine", "track:magitech", "track:trade"],
+    "埃瑟加德": ["track:doctrine", "track:magitech", "track:trade"],
+    "铁锚": ["track:trade", "track:magitech", "track:war"],
+    "万门": ["track:trade", "track:magitech", "track:war"],
+    "北境": ["track:migration", "track:war", "track:succession", "track:trade"],
+    "霜荒": ["track:migration", "track:war", "track:succession", "track:trade"],
+    "沉日绿沼": ["track:migration", "track:fiends", "track:schism"],
+    "绿沼": ["track:migration", "track:fiends", "track:schism"],
+    "熔火裂隙": ["track:magitech", "track:trade", "track:succession"],
+    "黑铁": ["track:magitech", "track:trade", "track:succession"],
+    "哀嚎铁壁": ["track:fiends", "track:war", "track:migration"],
+    "第九裂隙": ["track:fiends", "track:war", "track:migration"],
+    "翡翠林冠": ["track:migration", "track:doctrine", "track:trade"],
+    "灰烬荒原": ["track:migration", "track:war", "track:fiends"],
+    "default": ["track:war", "track:trade", "track:migration"]
+  }
 }

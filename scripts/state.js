@@ -83,6 +83,7 @@ const CLASS_HIT_DIE_MAP = {
 
 // DMG 2024 XP Budgets per character level (Low, Moderate, High)
 const XP_BUDGET_BY_LEVEL = {
+  0: { low: 25, moderate: 50, high: 75 },
   1: { low: 50, moderate: 75, high: 100 },
   2: { low: 100, moderate: 150, high: 200 },
   3: { low: 150, moderate: 225, high: 400 },
@@ -212,6 +213,7 @@ function inferHitDie(className, explicitHitDie) {
     return normalized;
   }
   const cls = String(className || '战士').trim().toLowerCase();
+  if (cls === '平民' || cls === 'commoner') return 'd8';
   for (const [key, die] of Object.entries(CLASS_HIT_DIE_MAP)) {
     if (cls.includes(key)) return die;
   }
@@ -503,23 +505,32 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
     }
   }
 
-  const maxHp = parseIntStrict(
-    (isPrimary ? (options.hp ?? options.maxHp) : undefined) ?? preset?.hp ?? preset?.maxHp ?? '12',
-    'hp',
-    { min: 1, max: 9999 }
-  );
   const level = parseIntStrict(
     (isPrimary ? options.level : undefined) ?? preset?.level ?? '1',
     'level',
-    { min: 1, max: 20 }
+    { min: 0, max: 20 }
+  );
+  const isLevel0 = level === 0;
+  const conMod = (isPrimary && options.con !== undefined)
+    ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
+    : 0;
+  const defaultLevel0Hp = Math.max(4, 4 + conMod);
+
+  const maxHp = parseIntStrict(
+    (isPrimary ? (options.hp ?? options.maxHp) : undefined) ?? preset?.hp ?? preset?.maxHp ?? (isLevel0 ? String(defaultLevel0Hp) : '12'),
+    'hp',
+    { min: 1, max: 9999 }
   );
   const ac = parseIntStrict(
-    (isPrimary ? options.ac : undefined) ?? preset?.ac ?? '16',
+    (isPrimary ? options.ac : undefined) ?? preset?.ac ?? (isLevel0 ? '10' : '16'),
     'ac',
     { min: 1, max: 99 }
   );
-  const charClass = (isPrimary ? options.class : undefined) || preset?.class || '战士';
-  const hitDie = inferHitDie(charClass, (isPrimary ? options.hitDie : undefined) ?? preset?.hitDie);
+  const charClass = (isPrimary ? options.class : undefined) || preset?.class || (isLevel0 ? '平民' : '战士');
+  const hitDie = isLevel0 && (!isPrimary || options.hitDie === undefined)
+    ? 'd8'
+    : inferHitDie(charClass, (isPrimary ? options.hitDie : undefined) ?? preset?.hitDie);
+  const hdCount = Math.max(1, level);
   const speed = (isPrimary && options.speed !== undefined)
     ? inferSpeed(options)
     : (preset?.speed ?? inferSpeed(options));
@@ -532,7 +543,7 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
     for (const [k, v] of Object.entries(preset.resources)) {
       resources[k] = { current: v.current, max: v.max, recovery: v.recovery || 'long:all' };
     }
-  } else if (String(charClass).toLowerCase().includes('战士') || String(charClass).toLowerCase().includes('fighter')) {
+  } else if (!isLevel0 && (String(charClass).toLowerCase().includes('战士') || String(charClass).toLowerCase().includes('fighter'))) {
     resources['回气'] = { current: 2, max: 2, recovery: 'short:1' };
   }
 
@@ -557,9 +568,9 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
         temp: 0
       },
       hitDice: {
-        total: level,
-        max: level,
-        current: level,
+        total: hdCount,
+        max: hdCount,
+        current: hdCount,
         die: hitDie
       },
       deathSaves: {
@@ -644,11 +655,9 @@ export function defaultState(campaignName, options = {}) {
     campaign: campaignName,
     character: primaryChar,
     party,
-    inventory: {
-      ...(isDMode ? { copper } : {}),
-      gold,
-      items
-    },
+    inventory: isDMode
+      ? { copper, items }
+      : { gold, items },
     status: {
       conditions: initialConditions,
       location: options.location || '初始冒险营地',
@@ -707,6 +716,9 @@ export function saveState(campaignName, state) {
   ensureDir(dirPath);
   if (Array.isArray(state.log) && state.log.length > MAX_LOG_ENTRIES) {
     state.log = state.log.slice(-MAX_LOG_ENTRIES);
+  }
+  if (state.meta?.mode === 'D' && state.inventory && 'gold' in state.inventory) {
+    delete state.inventory.gold;
   }
   state.updatedAt = new Date().toISOString();
 
@@ -1087,8 +1099,40 @@ export function updateState(campaignName, updates = {}) {
     logs.push(`${whoPrefix}职业资源【${resName}】变动: ${res.current}/${res.max}`);
   }
 
-  // 7. Gold
-  if (updates.gold !== undefined) {
+  // 7. Gold / Copper
+  if (state.meta?.mode === 'D') {
+    if (typeof state.inventory.copper !== 'number') {
+      state.inventory.copper = 0;
+    }
+    delete state.inventory.gold;
+
+    if (updates.gold !== undefined) {
+      const goldStr = String(updates.gold).trim();
+      if (goldStr.startsWith('+') || goldStr.startsWith('-')) {
+        const deltaGp = parseIntStrict(goldStr, 'gold', { min: -100000000, max: 100000000 });
+        const deltaCp = deltaGp * 100;
+        state.inventory.copper = Math.max(0, state.inventory.copper + deltaCp);
+        logs.push(`钱袋变动 ${deltaGp > 0 ? '+' + deltaGp : deltaGp}gp (${deltaCp > 0 ? '+' + deltaCp : deltaCp}cp，现余: ${formatCopper(state.inventory.copper)})`);
+      } else {
+        const valGp = parseIntStrict(goldStr, 'gold', { min: 0, max: 100000000 });
+        state.inventory.copper = valGp * 100;
+        logs.push(`钱袋设置为 ${formatCopper(state.inventory.copper)}`);
+      }
+    }
+
+    if (updates.copper !== undefined) {
+      const cpStr = String(updates.copper).trim();
+      if (cpStr.startsWith('+') || cpStr.startsWith('-')) {
+        const deltaCp = parseIntStrict(cpStr, 'copper', { min: -1000000000, max: 1000000000 });
+        state.inventory.copper = Math.max(0, state.inventory.copper + deltaCp);
+        logs.push(`钱袋变动 ${deltaCp > 0 ? '+' + deltaCp : deltaCp}cp (现余: ${formatCopper(state.inventory.copper)})`);
+      } else {
+        const valCp = parseIntStrict(cpStr, 'copper', { min: 0, max: 1000000000 });
+        state.inventory.copper = valCp;
+        logs.push(`钱袋设置为 ${formatCopper(state.inventory.copper)}`);
+      }
+    }
+  } else if (updates.gold !== undefined) {
     const goldStr = String(updates.gold).trim();
     if (goldStr.startsWith('+') || goldStr.startsWith('-')) {
       const delta = parseIntStrict(goldStr, 'gold', { min: -100000000, max: 100000000 });
@@ -1678,13 +1722,90 @@ export function manageNotes(campaignName, options = {}) {
   return state;
 }
 
+export function promoteCharacter(campaignName, options = {}) {
+  const state = getState(campaignName);
+  if (!state) {
+    throw new Error(`未找到战役 "${campaignName}"。请先运行 init 初始化。`);
+  }
+  clearEphemeralDeltas(state);
+  const member = resolvePartyMember(state, options.who);
+  if (member.level !== 0) {
+    throw new Error(`promote 命令仅支持从 0 级晋升到 1 级（0→1，当前等级: Lv.${member.level}）`);
+  }
+
+  const newClass = options.class || (member.class && member.class !== '平民' ? member.class : '战士');
+  const rawDie = options.hitDie ? String(options.hitDie).trim().toLowerCase() : null;
+  const hitDie = (rawDie && /^d\d+$/.test(rawDie) ? rawDie : null) || inferHitDie(newClass);
+  const hitDieMax = parseInt(hitDie.slice(1), 10) || 10;
+  const conMod = options.con !== undefined
+    ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
+    : (typeof member.conMod === 'number' ? member.conMod : 2);
+  const maxHp = options.hp !== undefined
+    ? parseIntStrict(options.hp, 'hp', { min: 1, max: 9999 })
+    : Math.max(1, hitDieMax + conMod);
+
+  member.level = 1;
+  member.class = newClass;
+  member.conMod = conMod;
+  const prevHp = member.hp.current;
+  member.hp.max = maxHp;
+  member.hp.current = maxHp;
+  member.hp.lastDelta = `+${Math.max(0, maxHp - prevHp)} 晋升Lv1`;
+  member.hitDice = {
+    total: 1,
+    current: 1,
+    remaining: 1,
+    die: hitDie
+  };
+
+  if (options.ac !== undefined) {
+    member.ac = parseIntStrict(options.ac, 'ac', { min: 1, max: 99 });
+  } else if (member.ac <= 10) {
+    member.ac = 14;
+  }
+
+  if (options.speed !== undefined) {
+    member.speed = parseIntStrict(options.speed, 'speed', { min: 0, max: 300 });
+  }
+
+  if (options.slots !== undefined) {
+    member.spellSlots = parseSlots(options.slots);
+  }
+
+  if (!member.resources || typeof member.resources !== 'object') {
+    member.resources = {};
+  }
+  if (newClass === '战士' && !member.resources['回气']) {
+    member.resources['回气'] = { current: 2, max: 2, recovery: 'short', recoverAmount: 1 };
+  } else if (newClass === '圣武士' && !member.resources['圣疗']) {
+    member.resources['圣疗'] = { current: 5, max: 5, recovery: 'long', recoverAmount: 5 };
+  } else if (newClass === '野蛮人' && !member.resources['狂暴']) {
+    member.resources['狂暴'] = { current: 2, max: 2, recovery: 'short', recoverAmount: 1 };
+  } else if (newClass === '吟游诗人' && !member.resources['吟游诗人激励']) {
+    member.resources['吟游诗人激励'] = { current: 3, max: 3, recovery: 'long', recoverAmount: 3 };
+  }
+
+  if (options.setResource !== undefined) {
+    const specs = Array.isArray(options.setResource) ? options.setResource : [options.setResource];
+    for (const spec of specs) {
+      const { name, resource } = parseResourceSpec(spec);
+      member.resources[name] = resource;
+    }
+  }
+
+  const logs = [];
+  syncHpConditionsForMember(state, member, logs);
+  appendLog(state, '序章晋升', `【${member.name}】从 Lv0 晋升为 Lv1 ${member.class} (HP ${member.hp.current}/${member.hp.max}, AC ${member.ac}, 生命骰 1${hitDie})`);
+  return saveState(campaignName, state);
+}
+
 export function calculateEncounterDifficulty({ partyLevels = [1], monsterCrs = [] } = {}) {
   if (!Array.isArray(partyLevels) || partyLevels.length === 0) {
     throw new Error('partyLevels 必须是非空等级数组');
   }
   const budgets = { low: 0, moderate: 0, high: 0 };
   for (const rawLvl of partyLevels) {
-    const lvl = parseIntStrict(rawLvl, '角色等级', { min: 1, max: 20 });
+    const lvl = parseIntStrict(rawLvl, '角色等级', { min: 0, max: 20 });
     const row = XP_BUDGET_BY_LEVEL[lvl];
     budgets.low += row.low;
     budgets.moderate += row.moderate;
@@ -2145,8 +2266,12 @@ function main() {
           console.log(`  [${c.toUpperCase()}] (${items.length}): ${items.length ? items.join(' | ') : '暂无记录'}`);
         }
       }
+    } else if (command === 'promote') {
+      const state = promoteCharacter(campaign, options);
+      console.log(`${colors.green}✓ 角色已成功从 Lv0 晋升为 Lv1 ${state.character.class}！${colors.reset}\n`);
+      console.log(generateHud(state, 'line', { veil: options.veil }));
     } else {
-      console.error(`${colors.red}未知指令: "${command}"。请使用 init, add-member, show, update, rest, next, mob-add, mob-hit, mob-clear, note, 或 encounter-calc。${colors.reset}`);
+      console.error(`${colors.red}未知指令: "${command}"。请使用 init, add-member, show, update, rest, next, mob-add, mob-hit, mob-clear, note, promote, 或 encounter-calc。${colors.reset}`);
       process.exit(1);
     }
   } catch (err) {

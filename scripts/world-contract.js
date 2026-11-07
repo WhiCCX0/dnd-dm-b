@@ -377,6 +377,9 @@ export function validateDModeStateDoc(stateDoc) {
   if (!stateDoc.inventory || typeof stateDoc.inventory !== 'object') {
     throw new Error('state.json.inventory 必须为对象');
   }
+  if (Object.prototype.hasOwnProperty.call(stateDoc.inventory, 'gold')) {
+    throw new Error('D 模式 state.json.inventory 严禁同时存储 gold 字段，只允许使用 copper 统一铜币记账');
+  }
   assertNonNegativeSafeInt(stateDoc.inventory.copper, 'state.json.inventory.copper');
   if (!Array.isArray(stateDoc.inventory.items)) {
     throw new Error('state.json.inventory.items 必须为数组');

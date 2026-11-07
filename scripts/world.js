@@ -247,6 +247,13 @@ export function applyTrackLinkagesForStep(worldDoc, fromClockId, beforeVal, afte
       const targetBefore = targetClk.current;
       const delta = Number.isSafeInteger(rule.delta) ? rule.delta : 1;
       targetClk.current = Math.max(0, Math.min(targetClk.max, targetClk.current + delta));
+      if (targetClk.status === 'paused' && targetClk.current < targetClk.max) {
+        targetClk.status = 'active';
+        const refCal = tickAt && typeof tickAt === 'string' && tickAt.includes('-M')
+          ? fromTotalHours(toTotalHours(tickAt), worldDoc.calendar.era)
+          : worldDoc.calendar;
+        targetClk.nextTick = computeInitialNextTick(refCal, targetClk.cadence);
+      }
       const completed = targetClk.current >= targetClk.max;
       if (completed) {
         targetClk.status = 'completed';
@@ -367,8 +374,84 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
 }
 
 // ============================================================================
-// 1. init 命令
+// 1. init 命令（不写死开局地点/势力；开局生成 3 个患级局部问题；演化八线仅启动 3-4 条）
 // ============================================================================
+
+function parseCsvList(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(s => String(s).trim()).filter(Boolean);
+  return String(raw).split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
+}
+
+function resolveActiveTrackIds(tracksDoc, options = {}) {
+  const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
+  const customActive = parseCsvList(options.activeTracks);
+  if (customActive.length >= 3 && customActive.length <= 4) {
+    return new Set(customActive);
+  }
+
+  const regionTracks = tracksDoc?.regionTracks || {};
+  const searchTarget = `${options.region || ''} ${options.location || options.locationId || ''}`.trim();
+  if (searchTarget) {
+    for (const [key, trackList] of Object.entries(regionTracks)) {
+      if (key !== 'default' && searchTarget.includes(key) && Array.isArray(trackList)) {
+        return new Set(trackList.slice(0, 4));
+      }
+    }
+    // 自定义区域：根据字符串哈希稳定选取 3 条相关演化线
+    if (allTracks.length >= 4) {
+      let hash = 0;
+      for (let i = 0; i < searchTarget.length; i++) {
+        hash = (hash * 31 + searchTarget.charCodeAt(i)) >>> 0;
+      }
+      const picked = new Set();
+      for (let offset = 0; picked.size < 3 && offset < allTracks.length * 2; offset++) {
+        const trk = allTracks[(hash + offset * 3) % allTracks.length];
+        picked.add(trk.id);
+      }
+      return picked;
+    }
+  }
+
+  const fallback = Array.isArray(regionTracks.default)
+    ? regionTracks.default
+    : ['track:war', 'track:trade', 'track:migration'];
+  return new Set(fallback.slice(0, 4));
+}
+
+function buildStarterTroubles(regionName, locName, customTroubles = []) {
+  const areaLabel = locName || regionName || '当地聚落';
+  const parsedCustom = parseCsvList(customTroubles);
+  const defaults = [
+    {
+      title: `${areaLabel}税卡与粮秣催缴`,
+      summary: `${areaLabel}近期加征过境与炉火捐，底层商贩与农户暗流汹涌`,
+      consequence: `${areaLabel}爆发抗税哗变或强行封锁集市`
+    },
+    {
+      title: `${areaLabel}外围商道异动`,
+      summary: `${areaLabel}通往邻境的旧道夜间频现不明斥候与失踪案`,
+      consequence: `${areaLabel}物资断绝、巡逻队遭伏击`
+    },
+    {
+      title: `${areaLabel}行会与地头暗斗`,
+      summary: `${areaLabel}地方实力派为争夺码头/工坊管辖权互相安插眼线`,
+      consequence: `${areaLabel}爆发街头火并或戒严宵禁`
+    }
+  ];
+
+  return [0, 1, 2].map(idx => {
+    const customText = parsedCustom[idx];
+    if (customText) {
+      return {
+        title: customText,
+        summary: `${areaLabel}局部隐患：${customText}`,
+        consequence: `${customText}恶化失控，波及${areaLabel}`
+      };
+    }
+    return defaults[idx];
+  });
+}
 
 export function defaultWorldDoc(options = {}) {
   const calendar = {
@@ -389,7 +472,9 @@ export function defaultWorldDoc(options = {}) {
   const clocks = [];
   if (!options.noTracks) {
     const tracksDoc = loadTracksDoc(options.tracksFile);
+    const activeTrackIds = resolveActiveTrackIds(tracksDoc, options);
     for (const trk of tracksDoc.tracks || []) {
+      const isActive = activeTrackIds.has(trk.id) || activeTrackIds.has(trk.name);
       clocks.push({
         id: trk.id,
         name: trk.name,
@@ -397,34 +482,147 @@ export function defaultWorldDoc(options = {}) {
         cadence: trk.cadence || 'month',
         current: 0,
         max: trk.max || (Array.isArray(trk.stages) ? trk.stages.length - 1 : 4),
-        status: 'active',
+        status: isActive ? 'active' : 'paused',
         nextTick: computeInitialNextTick(calendar, trk.cadence || 'month'),
         visibility: trk.visibility || 'public'
       });
     }
   }
 
-  const locations = options.empty
-    ? []
-    : [
-        { id: 'loc:greyhaven', name: '灰港', tier: '凡俗', visibility: 'public' },
-        { id: 'loc:iron_anchor_bay', name: '万门海湾外港', tier: '文明', visibility: 'public' },
-        { id: 'loc:aethergard_ring', name: '埃瑟加德高塔外环', tier: '超凡', visibility: 'public' }
-      ];
+  const locations = [];
+  const rawLocations = options.locations || options.location || options.locationId;
+  const regionName = options.region ? String(options.region).trim() : undefined;
+  if (!options.empty && rawLocations) {
+    const locList = parseCsvList(rawLocations);
+    const defaultTier = options.tier && TIER_LEVELS.includes(options.tier) ? options.tier : '凡俗';
+    locList.forEach((locRaw, idx) => {
+      const isIdFormat = locRaw.startsWith('loc:');
+      const locEntry = {
+        id: isIdFormat ? locRaw : `loc:start_${idx + 1}`,
+        name: locRaw,
+        tier: defaultTier,
+        visibility: 'public'
+      };
+      if (regionName) locEntry.region = regionName;
+      locations.push(locEntry);
+    });
+  }
 
-  const factions = options.empty
-    ? []
-    : [
-        { id: 'fac:holy_seat', name: '圣座同盟·灰岩十一邦', attitude: 0, visibility: 'public' },
-        { id: 'fac:high_tower', name: '高塔议会·埃瑟加德', attitude: 0, visibility: 'public' },
-        { id: 'fac:iron_anchor', name: '铁锚自由同盟', attitude: 0, visibility: 'public' }
-      ];
+  const factions = [];
+  if (!options.empty && options.factions) {
+    const facList = parseCsvList(options.factions);
+    facList.forEach((facRaw, idx) => {
+      const isIdFormat = facRaw.startsWith('fac:');
+      factions.push({
+        id: isIdFormat ? facRaw : `fac:start_${idx + 1}`,
+        name: facRaw,
+        attitude: 0,
+        visibility: 'public'
+      });
+    });
+  }
+
+  const ledger = [];
+  const canon = [];
+  if (options.region) {
+    canon.push({
+      id: 'canon:start_region',
+      entityId: locations[0]?.id || 'region:start',
+      predicate: '所属区域',
+      value: String(options.region).trim(),
+      status: '定论',
+      source: '玩家提出',
+      validFrom: formatTimestamp(calendar),
+      validTo: null,
+      visibility: 'public'
+    });
+  }
+
+  const hasStarterContext = Boolean(options.region || rawLocations || options.troubles);
+  if (!options.empty && !options.noTroubles && hasStarterContext) {
+    const troubles = buildStarterTroubles(
+      options.region ? String(options.region).trim() : '',
+      locations[0]?.name || '',
+      options.troubles
+    );
+    troubles.forEach((tr, idx) => {
+      const num = idx + 1;
+      clocks.push({
+        id: `clk:trouble_${num}`,
+        name: `【患】${tr.title}`,
+        kind: 'threat',
+        cadence: 'tenday',
+        current: 0,
+        max: 4,
+        status: 'active',
+        nextTick: computeInitialNextTick(calendar, 'tenday'),
+        visibility: 'public'
+      });
+      ledger.push({
+        id: `led:trouble_${num}`,
+        type: '余波',
+        summary: `【患】${tr.summary}`,
+        source: '开局地区患级问题',
+        status: '未动',
+        dueAt: computeInitialNextTick(calendar, 'month'),
+        overdueConsequence: tr.consequence,
+        npcIds: [],
+        factionIds: factions.slice(0, 1).map(f => f.id),
+        visibility: 'public'
+      });
+    });
+  }
+
+  if (!options.empty && options.cost) {
+    const costText = String(options.cost).trim();
+    ledger.push({
+      id: 'led:start_cost',
+      type: '债',
+      debtKind: '契约',
+      summary: `【★代价】${costText}`,
+      source: '开局身份代价(★)',
+      status: '未动',
+      dueAt: computeInitialNextTick(calendar, 'month'),
+      overdueConsequence: `身份代价反噬：${costText}`,
+      npcIds: [],
+      factionIds: factions.slice(0, 1).map(f => f.id),
+      visibility: 'public'
+    });
+  }
+
+  if (!options.empty && options.limit) {
+    const limitText = String(options.limit).trim();
+    clocks.push({
+      id: 'clk:start_limit',
+      name: `【◆限制】${limitText}`,
+      kind: 'threat',
+      cadence: 'tenday',
+      current: 0,
+      max: 4,
+      status: 'active',
+      nextTick: computeInitialNextTick(calendar, 'tenday'),
+      visibility: 'public'
+    });
+    ledger.push({
+      id: 'led:start_limit',
+      type: '承诺',
+      summary: `【◆限制】${limitText}`,
+      source: '开局戒律与限制(◆)',
+      status: '未动',
+      dueAt: null,
+      overdueConsequence: `违背限制引发追责：${limitText}`,
+      npcIds: [],
+      factionIds: factions.slice(0, 1).map(f => f.id),
+      visibility: 'public'
+    });
+  }
 
   const worldDoc = {
     meta: {
       mode: 'D',
       worldId: JIANHUO_WORLD_ID,
       schemaVersion: WORLD_SCHEMA_VERSION,
+      ...(regionName ? { region: regionName } : {}),
       worldParams: {
         danger: options.danger || 'standard',
         intensity,
@@ -439,8 +637,8 @@ export function defaultWorldDoc(options = {}) {
     factions,
     npcs: [],
     clocks,
-    ledger: [],
-    canon: [],
+    ledger,
+    canon,
     rumors: []
   };
 
@@ -481,6 +679,8 @@ export function formatWorldStatus(worldDoc, { gm = false, campaign = '' } = {}) 
 
   const nonTrackClocks = view.clocks.filter(c => c.kind !== 'track' && c.status === 'active');
   const trackClocks = view.clocks.filter(c => c.kind === 'track');
+  const activeTracks = trackClocks.filter(c => c.status === 'active');
+  const pausedTracks = trackClocks.filter(c => c.status === 'paused');
   const activeLedger = view.ledger.filter(l => l.status !== '了结');
   const aliveNpcs = view.npcs.filter(n => n.alive);
   const deadNpcs = view.npcs.filter(n => !n.alive);
@@ -491,7 +691,7 @@ export function formatWorldStatus(worldDoc, { gm = false, campaign = '' } = {}) 
     `📍 地点(${view.locations.length}): ${summarizeList(view.locations, l => `${l.name}[${l.tier}]`, 3)}`,
     `🏛️ 势力(${view.factions.length}): ${summarizeList(view.factions, f => `${f.name}(态度:${f.attitude >= 0 ? '+' + f.attitude : f.attitude})`, 3)}`,
     `⏱️ 局势时钟(${nonTrackClocks.length}活跃): ${summarizeList(nonTrackClocks, c => `${c.name} ${c.current}/${c.max}(${c.cadence})`, 3)}`,
-    `⚙️ 演化八线(${trackClocks.length}): ${summarizeList(trackClocks, c => `${c.name}[${getStageLabel(c, tracksDoc) || `${c.current}/${c.max}`}]`, 4)}`,
+    `⚙️ 演化八线(${activeTracks.length}启动/${pausedTracks.length}待启动): ${summarizeList(activeTracks, c => `${c.name}[${getStageLabel(c, tracksDoc) || `${c.current}/${c.max}`}]`, 4)}`,
     `📒 账本(${activeLedger.length}未结/共${view.ledger.length}): ${summarizeList(activeLedger, l => `[${l.type}]${l.summary}`, 2)}`,
     `👤 人物(${aliveNpcs.length}存活/${deadNpcs.length}已故): ${summarizeList(view.npcs, n => `${n.name}(${n.alive ? '存' : '亡'},态度:${n.attitude})`, 3)}`,
     `📜 世界定论与事实(canon: ${view.canon.length}) | 街巷传闻(rumors: ${view.rumors.length})`
@@ -936,6 +1136,7 @@ export function manageRumor(campaignName, options = {}) {
     if (!maxTier && locId) {
       const loc = world.locations.find(l => l.id === locId || l.name === locId);
       if (loc) maxTier = loc.tier;
+      else maxTier = '凡俗';
     }
     if (!maxTier) maxTier = '文明';
 
@@ -1088,6 +1289,7 @@ export function parseWorldCliArgs(args) {
     else if (arg === '--json') options.json = true;
     else if (arg === '--force') options.force = true;
     else if (arg === '--no-tracks') options.noTracks = true;
+    else if (arg === '--no-troubles') options.noTroubles = true;
     else if (arg === '--empty') options.empty = true;
     else if (arg === '--add') options.add = true;
     else if (arg === '--update') options.update = true;
@@ -1111,6 +1313,13 @@ export function parseWorldCliArgs(args) {
     else if (arg === '--intensity') options.intensity = requireVal(i++, '--intensity');
     else if (arg === '--magic-level') options.magicLevel = requireVal(i++, '--magic-level');
     else if (arg === '--style') options.style = requireVal(i++, '--style');
+    else if (arg === '--region') options.region = requireVal(i++, '--region');
+    else if (arg === '--locations') options.locations = requireVal(i++, '--locations');
+    else if (arg === '--factions') options.factions = requireVal(i++, '--factions');
+    else if (arg === '--cost') options.cost = requireVal(i++, '--cost');
+    else if (arg === '--limit') options.limit = requireVal(i++, '--limit');
+    else if (arg === '--active-tracks') options.activeTracks = requireVal(i++, '--active-tracks');
+    else if (arg === '--troubles') options.troubles = requireVal(i++, '--troubles');
     else if (arg === '--advance') options.advance = requireVal(i++, '--advance');
     else if (arg === '--id') options.id = requireVal(i++, '--id');
     else if (arg === '--name') options.name = requireVal(i++, '--name');
@@ -1138,7 +1347,11 @@ export function parseWorldCliArgs(args) {
     else if (arg === '--fear') options.fear = requireVal(i++, '--fear');
     else if (arg === '--secret') options.secret = requireVal(i++, '--secret');
     else if (arg === '--attitude') options.attitude = requireVal(i++, '--attitude');
-    else if (arg === '--location' || arg === '--location-id') options.locationId = requireVal(i++, arg);
+    else if (arg === '--location' || arg === '--location-id') {
+      const val = requireVal(i++, arg);
+      options.location = val;
+      options.locationId = val;
+    }
     else if (arg === '--alive') options.alive = requireVal(i++, '--alive');
     else if (arg === '--revive-reason' || arg === '--spell') options.reviveReason = requireVal(i++, arg);
     else if (arg === '--text') options.text = requireVal(i++, '--text');
@@ -1162,7 +1375,7 @@ function printHelp() {
 ${colors.bright}${colors.cyan}🌍 剑火纪元（D 模式）最小世界工具 (World Manager)${colors.reset}
 
 用法:
-  node scripts/world.js init <campaign> [--seed <N>] [--intensity <slow|standard|fast>] [--force]
+  node scripts/world.js init <campaign> [--seed <N>] [--region <区域>] [--location <地点>] [--factions <势力>] [--cost <★代价>] [--limit <◆限制>] [--intensity <slow|standard|fast>] [--force]
   node scripts/world.js status <campaign> [--gm] [--json]
   node scripts/world.js time <campaign> [--advance <1h|8h|1d|1tenday|1m|1season|1y>] [--gm] [--json]
   node scripts/world.js clock <campaign> <--add|--advance <N>|--pause|--resume|--cancel|--list> [--id <id>]

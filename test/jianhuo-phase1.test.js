@@ -313,14 +313,12 @@ test('W1.5 - migration-log.md 完整覆盖原仓文件与母本全部独有段�
   const history = fs.readFileSync(path.join(loreDir, 'history-and-eras.md'), 'utf8');
   assert.ok(history.includes('传说形成律'), 'history-and-eras.md 必须实际救回传说形成失真律');
 
-  // 货币措辞检查：在仓库主人最终确认前，不提前声称货币方案“已确认”
-  for (const f of collectMdFiles(jianhuoDir)) {
-    const txt = fs.readFileSync(f, 'utf8');
-    assert.ok(
-      !/货币记账契约[^\n]*已确认|统一铜币[^\n]*已确认/.test(txt),
-      `${path.relative(rootDir, f)} 在仓库主人确认前不得将统一铜币写为“已确认”`
-    );
-  }
+  // 货币措辞检查：阶段 3 仓库主人已确认统一铜币方案，SCHEMA.md 标为“已确认”
+  const schemaTxt = fs.readFileSync(path.join(jianhuoDir, 'SCHEMA.md'), 'utf8');
+  assert.ok(
+    schemaTxt.includes('已确认') && schemaTxt.includes('inventory.copper'),
+    'worlds/jianhuo/SCHEMA.md 应标明统一铜币方案已确认'
+  );
 });
 
 function parseMarkdownTableUnderHeading(mdText, headingPrefix) {

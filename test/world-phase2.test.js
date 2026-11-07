@@ -129,7 +129,14 @@ test('phase2 (world.js init 与 status) - 输出严格控制在 15 行以内，�
   const world = initWorld(campaign, { seed: 20261107 });
   assert.equal(world.meta.mode, 'D');
   assert.equal(world.meta.worldId, 'jianhuo');
-  assert.equal(world.clocks.filter(c => c.kind === 'track').length, 8, '默认应挂载演化八线时钟');
+  const trackClocks = world.clocks.filter(c => c.kind === 'track');
+  assert.equal(trackClocks.length, 8, '默认应挂载演化八线时钟');
+  const activeTracks = trackClocks.filter(c => c.status === 'active');
+  const pausedTracks = trackClocks.filter(c => c.status === 'paused');
+  assert.ok(activeTracks.length >= 3 && activeTracks.length <= 4, `开局应只启动 3-4 条相关演化线，实际启动: ${activeTracks.length}`);
+  assert.equal(activeTracks.length + pausedTracks.length, 8, '其余演化线应处于 paused 待启动状态');
+  assert.equal(world.locations.length, 0, '不传开局地区/地点时不应写死灰港等默认地点');
+  assert.equal(world.factions.length, 0, '不传开局势力时不应写死默认势力');
 
   // 注入公开项与机密项（含公开 NPC 的 secret 底牌、纯 secret NPC、secret 时钟、secret 账本、secret 传闻）
   manageClock(campaign, {
@@ -599,7 +606,7 @@ test('phase2 (回滚失败人工恢复指引与 CLI 无 ANSI 门禁) - .bak 损�
   };
 
   runCli(STATE_SCRIPT, ['init', cliCamp, '--mode', 'D', '--name', '科林', '--hp', '12']);
-  runCli(WORLD_SCRIPT, ['init', cliCamp, '--seed', '2026']);
+  runCli(WORLD_SCRIPT, ['init', cliCamp, '--seed', '2026', '--region', '铁锚自由同盟与万门海湾', '--location', '万门海湾外港']);
   const statusOut = runCli(WORLD_SCRIPT, ['status', cliCamp]);
   assert.ok(statusOut.trim().split('\n').length <= 15);
 
@@ -609,9 +616,9 @@ test('phase2 (回滚失败人工恢复指引与 CLI 无 ANSI 门禁) - .bak 损�
   runCli(WORLD_SCRIPT, ['clock', cliCamp, '--resume', '--id', 'clk:cli_1']);
 
   runCli(WORLD_SCRIPT, ['ledger', cliCamp, '--add', '--id', 'led:cli_1', '--type', '线索', '--summary', '钟楼暗格密信']);
-  runCli(WORLD_SCRIPT, ['canon', cliCamp, '--add', '--id', 'canon:cli_1', '--entity', 'loc:greyhaven', '--predicate', '治安官', '--value', '霍尔顿']);
-  runCli(WORLD_SCRIPT, ['npc', cliCamp, '--generate', '--location', 'loc:greyhaven']);
-  runCli(WORLD_SCRIPT, ['rumor', cliCamp, '--draw', '--location', 'loc:greyhaven']);
+  runCli(WORLD_SCRIPT, ['canon', cliCamp, '--add', '--id', 'canon:cli_1', '--entity', 'loc:start_1', '--predicate', '治安官', '--value', '霍尔顿']);
+  runCli(WORLD_SCRIPT, ['npc', cliCamp, '--generate', '--location', '万门海湾外港']);
+  runCli(WORLD_SCRIPT, ['rumor', cliCamp, '--draw', '--location', '万门海湾外港']);
   runCli(WORLD_SCRIPT, ['oracle', cliCamp, '--question', '守卫是否换岗？', '--odds', 'even']);
 
   runCli(STATE_SCRIPT, ['rest', cliCamp, '--short']);

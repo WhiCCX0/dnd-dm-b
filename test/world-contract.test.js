@@ -51,6 +51,7 @@ test('phase0 (SCHEMA.md) - 先决契约文档存在且覆盖全部 7 节契约�
     'worldId": "jianhuo"',
     'pending-op.json',
     'inventory.copper',
+    '已确认',
     '1 gp = 10 sp = 100 cp',
     'day',
     'tenday',
@@ -103,6 +104,10 @@ test('phase0 (数据结构与单一权威) - D 模式元数据、铜币无损换
   assert.throws(
     () => validateDModeStateDoc({ ...validState, inventory: { copper: -1, items: [] } }),
     /copper/
+  );
+  assert.throws(
+    () => validateDModeStateDoc({ ...validState, inventory: { copper: 250, gold: 2, items: [] } }),
+    /gold/
   );
 
   // 合法 world.json 与越界字段拦截
