@@ -1,8 +1,12 @@
 {
   "name": "dnd-dm-b-skill",
   "version": "2.2.0",
-  "description": "D&D 5e 中文全规则跑团地下城主 (DM) 技能 (B版: 整合 DND5e 不全书 7,000+ 中文规则与 38 部官方模组)",
+  "description": "D&D 5e (2024/2025 修订版 + 全扩展) 中文地下城主 (DM) 技能：整合 DND5e 不全书 8,827 条去重规则库、DMG 2024 五大完整冒险与 38 部经典模组",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WhiCCX0/dnd-dm-b.git"
+  },
   "type": "module",
   "main": "scripts/lookup.js",
   "engines": {

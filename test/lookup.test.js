@@ -525,3 +525,36 @@ test('CLI 端到端 (R12.5 & R13) - 从非技能目录运行三个核心脚本�
   }
 });
 
+test('lookup - 2024 全部 38 种基础武器、13 种基础护甲与 26 项种族/背景起源 100% 精准命中', () => {
+  const weaponsAndArmors = [
+    '短棒', '匕首', '巨棒', '手斧', '标枪', '轻锤', '硬头锤', '长棍', '镰刀', '矛',
+    '飞镖', '轻弩', '短弓', '投石索',
+    '战斧', '链枷', '长柄刀', '巨斧', '巨剑', '戟', '骑枪', '长剑', '巨锤', '钉头锤',
+    '长矛', '刺剑', '弯刀', '短剑', '三叉戟', '战镐', '战锤', '鞭',
+    '吹箭筒', '手弩', '重弩', '长弓', '火铳', '手铳',
+    '布甲', '皮甲', '镶钉皮甲', '兽皮甲', '链甲衫', '鳞甲', '胸甲', '半身板甲',
+    '环甲', '链甲', '板条甲', '板甲', '盾牌',
+    'Longsword', 'Greatsword', 'Chain Mail', 'Studded Leather Armor'
+  ];
+  for (const item of weaponsAndArmors) {
+    const res = lookup('item', item, { brief: true, json: true });
+    assert.equal(res.found, true, `item "${item}" 必须命中 2024 基础装备条目`);
+    assert.equal(res.entry.edition, '2024', `item "${item}" 必须优先命中 2024 版本`);
+    assert.ok(
+      res.entry.brief.includes('伤害:') || res.entry.brief.includes('AC:'),
+      `item "${item}" 精简卡应包含武器伤害或护甲 AC 字段: ${res.entry.brief}`
+    );
+  }
+
+  const origins = [
+    '阿斯莫', '龙裔', '矮人', '精灵', '侏儒', '歌利亚', '半身人', '人类', '兽人', '提夫林',
+    '侍僧', '工匠', '骗子', '罪犯', '艺人', '农民', '农夫', '警卫', '向导', '隐士',
+    '商人', '贵族', '智者', '水手', '抄写员', '士兵', '流浪者', '流浪儿'
+  ];
+  for (const name of origins) {
+    const res = lookup('rule', name, { brief: true, json: true });
+    assert.equal(res.found, true, `rule "${name}" 必须命中 2024 种族/背景起源条目`);
+    assert.equal(res.entry.edition, '2024', `rule "${name}" 必须命中 2024 版本，实际: ${JSON.stringify(res.entry)}`);
+    assert.equal(res.entry.category, 'origin', `rule "${name}" 必须命中 origin 类别，实际: ${res.entry.category}`);
+  }
+});

@@ -491,3 +491,20 @@ test('gate (R17) - 布兰·铁须头衔统一为“矮人斥候”，且全仓 H
     assert.ok(!text.includes('矮人老兵斥候') && !text.includes('矮人老练斥候'), `${rel} 中布兰头衔应统一为“矮人斥候”`);
   }
 });
+
+test('gate - GitHub Actions CI 数据库初始化顺序与模板 2024 数值/术语一致性门禁', () => {
+  const ciYml = fs.readFileSync(path.join(rootDir, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const setupIdx = ciYml.indexOf('npm run setup-db');
+  const testIdx = ciYml.indexOf('npm test');
+  assert.ok(setupIdx !== -1, 'ci.yml 必须包含 npm run setup-db 步骤');
+  assert.ok(testIdx !== -1 && setupIdx < testIdx, 'ci.yml 必须在执行 npm test 之前运行 npm run setup-db');
+
+  const cheatSheet = fs.readFileSync(path.join(rootDir, 'templates', 'novice-cheat-sheet.md'), 'utf8');
+  assert.ok(!cheatSheet.includes('长笛'), 'novice-cheat-sheet.md 精通词条示例不得包含错别字“长笛”');
+
+  const tracker = fs.readFileSync(path.join(rootDir, 'templates', 'combat-tracker.md'), 'utf8');
+  assert.ok(tracker.includes('| 17 | 12 / 12 |'), 'combat-tracker.md 中战士瓦伦 AC/HP 应与 presets.json (AC 17, HP 12/12) 一致');
+  assert.ok(tracker.includes('| 14 | 10 / 10 |'), 'combat-tracker.md 中游荡者莱拉 AC/HP 应与 presets.json (AC 14, HP 10/10) 一致');
+  assert.ok(tracker.includes('| 12 | 8 / 8 |'), 'combat-tracker.md 中法师阿里斯泰尔 AC/HP 应与 presets.json (AC 12, HP 8/8) 一致');
+});
+

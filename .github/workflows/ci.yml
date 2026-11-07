@@ -6,18 +6,37 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
 jobs:
   test:
     name: Node.js 24 Test Suite
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
+
+      - name: Cache compiled rules database
+        id: db-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            references/rules.db
+            references/topics_index.json
+          key: rules-db-${{ runner.os }}-${{ hashFiles('references/db-manifest.json', 'scripts/build-index.js', 'scripts/build-db.js', 'scripts/setup-db.js') }}
+
+      - name: Prepare rules database
+        run: npm run setup-db
 
       - name: Run automated tests
         run: npm test

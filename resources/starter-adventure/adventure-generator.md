@@ -40,7 +40,7 @@
 
 ## 3. 机关陷阱与谜题库 (d6 Traps & Puzzles)
 
-1. **摆刃回廊 (Sccything Blade Corridor):**
+1. **摆刃回廊 (Scything Blade Corridor):**
    - *侦测:* 观察到石壁有水平划痕 (察觉 DC 12)。
    - *触发:* 踩中隐蔽绊线。
    - *效果:* 敏捷豁免 DC 13，失败受到 2d8 挥砍伤害，成功半伤。

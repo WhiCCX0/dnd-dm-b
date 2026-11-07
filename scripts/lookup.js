@@ -221,7 +221,7 @@ const VERNACULAR_MAP = {
   '激励': { query: '英雄激励', command: 'rule' },
   '鼓舞': { query: '英雄激励', command: 'rule' },
 
-  // 道具与装备俗称
+  // 道具、武器与工具常用异译/俗称
   '血瓶': { query: '治疗药水', command: 'item' },
   '红药水': { query: '治疗药水', command: 'item' },
   '大红': { query: '高等治疗药水', command: 'item' },
@@ -230,6 +230,23 @@ const VERNACULAR_MAP = {
   '空间袋': { query: '次元袋', command: 'item' },
   '日圣符': { query: '鸦族圣徽', command: 'item' },
   '渡鸦圣徽': { query: '鸦族圣徽', command: 'item' },
+  '麻绳': { query: '绳索', command: 'item' },
+  '丝绳': { query: '绳索', command: 'item' },
+  '草药师工具': { query: '草药工具', command: 'item' },
+  '炼金术士工具': { query: '炼金工具', command: 'item' },
+  '酿酒师工具': { query: '酿酒工具', command: 'item' },
+  '制图师工具': { query: '制图工具', command: 'item' },
+  '毒药师工具': { query: '毒药工具', command: 'item' },
+  '大砍刀': { query: '长柄刀', command: 'item' },
+  '大斧': { query: '巨斧', command: 'item' },
+  '细剑': { query: '刺剑', command: 'item' },
+  '连枷': { query: '链枷', command: 'item' },
+  '晨星锤': { query: '钉头锤', command: 'item' },
+  '条板甲': { query: '板条甲', command: 'item' },
+
+  // 角色起源异译
+  '农夫': { query: '农民', command: 'origin' },
+  '流浪儿': { query: '流浪者', command: 'origin' },
 
   // 怪物通俗俗称
   '哥布林': { query: '地精', command: 'monster' },
@@ -242,6 +259,7 @@ const VERNACULAR_MAP = {
   '精通词条': { query: '精通词条', command: 'rule' },
 
   // 法术与职业特性常用旧译/异译
+  '复苏之风': { query: '回气', command: 'rule' },
   '恶言相向': { query: '恶言相加', command: 'spell' },
   '地狱之斥': { query: '炼狱叱喝', command: 'spell' },
   '圣疗术': { query: '圣疗', command: 'class' },
@@ -429,7 +447,7 @@ function getCategoryFilterSql(activeCmd, { useIndex = true, alias = '' } = {}) {
   if (activeCmd === 'class') return `${col} = 'class'`;
   if (activeCmd === 'feat') return `${col} = 'feat'`;
   if (activeCmd === 'origin') return `${col} = 'origin'`;
-  if (activeCmd === 'rule') return `${col} IN ('rule', 'condition', 'feat', 'class')`;
+  if (activeCmd === 'rule') return `${col} IN ('rule', 'condition', 'feat', 'class', 'origin')`;
   if (activeCmd === 'condition') return `${col} IN ('condition', 'rule')`;
   if (activeCmd === 'module') return `(${col} = 'module' OR ${urlCol} LIKE '%模组%' OR ${urlCol} LIKE '%范例冒险%')`;
   return null;
@@ -443,9 +461,94 @@ function matchesCategoryJs(entryCat, entryUrl, activeCmd) {
   if (activeCmd === 'class') return entryCat === 'class';
   if (activeCmd === 'feat') return entryCat === 'feat';
   if (activeCmd === 'origin') return entryCat === 'origin';
-  if (activeCmd === 'rule') return ['rule', 'condition', 'feat', 'class'].includes(entryCat);
+  if (activeCmd === 'rule') return ['rule', 'condition', 'feat', 'class', 'origin'].includes(entryCat);
   if (activeCmd === 'condition') return ['condition', 'rule'].includes(entryCat);
   if (activeCmd === 'module') return entryCat === 'module' || (entryUrl && (entryUrl.includes('模组') || entryUrl.includes('范例冒险')));
+  return true;
+}
+
+let _equipmentTableCache = null;
+
+function getEquipmentTableMap(db) {
+  if (_equipmentTableCache && _equipmentTableCache.db === db) {
+    return _equipmentTableCache.map;
+  }
+  const map = new Map();
+  const pages = db.prepare(`
+    SELECT id, category, title, title_en, url, edition, content_md
+    FROM entries
+    WHERE edition = '2024' AND url IN ('玩家手册2024/装备/武器.htm', '玩家手册2024/装备/护甲.htm')
+  `).all();
+
+  for (const page of pages) {
+    const isWeapon = page.url.endsWith('武器.htm');
+    let groupLabel = isWeapon ? '武器' : '护甲';
+    for (const rawLine of (page.content_md || '').split('\n')) {
+      const line = rawLine.trim();
+      if (!line.startsWith('|') || !line.endsWith('|')) continue;
+      const cells = line.slice(1, -1).split('|').map(c => c.trim());
+      if (cells.length < 5) continue;
+      if (cells.every(c => /^[-:\s]*$/.test(c))) continue;
+      if (/^\*[^*]+\*$/.test(cells[0]) && cells.slice(1).every(c => c === '')) {
+        groupLabel = cells[0].replace(/^\*+|\*+$/g, '').trim();
+        continue;
+      }
+      const nameMatch = cells[0].match(/^([\u4e00-\u9fa5]+)\s*([A-Za-z][A-Za-z\s'-]*)$/);
+      if (!nameMatch) continue;
+      const zhName = nameMatch[1].trim();
+      const enName = nameMatch[2].trim();
+      const brief = isWeapon
+        ? `[物品] ${zhName} (${enName}) | 类别: ${groupLabel} | 伤害: ${cells[1]} | 词条: ${cells[2]} | 精通: ${cells[3]} | 重量: ${cells[4]} | 价格: ${cells[5] || '—'}`
+        : `[物品] ${zhName} (${enName}) | 类别: ${groupLabel} | AC: ${cells[1]} | 力量要求: ${cells[2]} | 隐匿: ${cells[3]} | 重量: ${cells[4]} | 价格: ${cells[5] || '—'}`;
+      const record = { page, zhName, enName, groupLabel, brief };
+      map.set(zhName.toLowerCase(), record);
+      map.set(enName.toLowerCase(), record);
+    }
+  }
+  _equipmentTableCache = { db, map };
+  return map;
+}
+
+function resolveEquipmentTableRow(db, activeCmd, qTrim, isBrief, isFull, options = {}) {
+  if (activeCmd && !['item', 'search'].includes(activeCmd)) return null;
+  const rec = getEquipmentTableMap(db).get(qTrim.toLowerCase());
+  if (!rec) return null;
+  const { page, zhName, enName, brief } = rec;
+
+  if (options.json) {
+    return {
+      found: true,
+      entry: {
+        id: page.id,
+        category: 'item',
+        title: zhName,
+        titleEn: enName,
+        edition: '2024',
+        url: page.url,
+        anchor: zhName,
+        brief,
+        content: `${brief}\n\n${page.content_md}`
+      },
+      related: []
+    };
+  }
+
+  console.log(`${colors.green}=== 找到条目: 【${zhName} (${enName})】 [2024/2025 修订版] ===${colors.reset}`);
+  console.log(`${colors.dim}来源: 5echm/${page.url} #${zhName} (ID: #${page.id})${colors.reset}\n`);
+  if (isBrief) {
+    console.log(`${colors.yellow}[AI 紧凑数据卡]${colors.reset}`);
+    console.log(brief);
+  } else {
+    console.log(brief);
+    console.log('');
+    const lines = (page.content_md || '').split('\n');
+    if (!isFull && lines.length > 300) {
+      console.log(lines.slice(0, 300).join('\n'));
+      console.log(`\n${colors.dim}... [内容已部分折叠，完整内容请添加 --full 参数查阅 (${page.url})]${colors.reset}`);
+    } else {
+      console.log(page.content_md);
+    }
+  }
   return true;
 }
 
@@ -719,6 +822,12 @@ function querySqlite(command, query, isBrief, options = {}) {
     if (categoryFilter) exactAliasSql += ` AND ${categoryFilter}`;
     exactAliasSql += ` ORDER BY ${statblockOrder}, ${editionOrder}, id ASC LIMIT 6`;
     rows = prepareCached(db, exactAliasSql).all(`%, ${qLowerEscaped}, %`);
+  }
+
+  // 1c. 2024 PHB Mundane Weapon & Armor Table Row Direct Match (#876 武器 / #879 护甲)
+  if (rows.length === 0) {
+    const equipRes = resolveEquipmentTableRow(db, activeCmd, qTrim, isBrief, isFull, options);
+    if (equipRes !== null) return equipRes;
   }
 
   // 2. Starts with / Prefix match (ordered by match quality BEFORE edition!)
