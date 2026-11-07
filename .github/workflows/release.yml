@@ -1,0 +1,97 @@
+name: Publish Rules Database Release
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish-release:
+    name: Build, Verify SHA-256 & Publish Release (main only)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Enforce main branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Release workflow may only run on refs/heads/main (got ${GITHUB_REF})" >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 24.22.2
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.2'
+
+      - name: Build database from pinned upstream commit and verify deterministic SHA-256
+        id: build_verify
+        run: |
+          set -euo pipefail
+          node -v
+
+          eval "$(node --input-type=module -e "
+            import fs from 'node:fs';
+            const m = JSON.parse(fs.readFileSync('references/db-manifest.json', 'utf8'));
+            console.log('VERSION_TAG=' + JSON.stringify('v' + m.version));
+            console.log('ARCHIVE_NAME=' + JSON.stringify(m.releaseArchiveName));
+            console.log('MANIFEST_SHA256=' + JSON.stringify(m.sha256));
+            console.log('MANIFEST_BYTES=' + JSON.stringify(String(m.archiveBytes)));
+            console.log('UPSTREAM_COMMIT=' + JSON.stringify(m.upstreamCommit));
+          ")"
+
+          node scripts/setup-db.js --from-source --force
+          node scripts/setup-db.js --pack "${ARCHIVE_NAME}"
+
+          ACTUAL_SHA256="$(sha256sum "${ARCHIVE_NAME}" | awk '{print $1}')"
+          ACTUAL_BYTES="$(stat -c '%s' "${ARCHIVE_NAME}")"
+
+          echo "manifest sha256 : ${MANIFEST_SHA256}"
+          echo "actual   sha256 : ${ACTUAL_SHA256}"
+          echo "manifest bytes  : ${MANIFEST_BYTES}"
+          echo "actual   bytes  : ${ACTUAL_BYTES}"
+
+          git diff --exit-code references/db-manifest.json
+
+          if [ "${ACTUAL_SHA256}" != "${MANIFEST_SHA256}" ]; then
+            echo "::error::SHA-256 mismatch! Refusing to publish release. manifest=${MANIFEST_SHA256} actual=${ACTUAL_SHA256}" >&2
+            exit 1
+          fi
+
+          {
+            echo "version_tag=${VERSION_TAG}"
+            echo "archive_name=${ARCHIVE_NAME}"
+            echo "actual_sha256=${ACTUAL_SHA256}"
+            echo "actual_bytes=${ACTUAL_BYTES}"
+            echo "upstream_commit=${UPSTREAM_COMMIT}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ steps.build_verify.outputs.version_tag }}
+          ARCHIVE_NAME: ${{ steps.build_verify.outputs.archive_name }}
+          ACTUAL_SHA256: ${{ steps.build_verify.outputs.actual_sha256 }}
+          ACTUAL_BYTES: ${{ steps.build_verify.outputs.actual_bytes }}
+          UPSTREAM_COMMIT: ${{ steps.build_verify.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          NOTES="$(cat <<EOF
+          D&D 5e 中文规则全量预编译数据库 (${VERSION_TAG})
+
+          - 上游提交号 (5echm_web): \`${UPSTREAM_COMMIT}\`
+          - 附件文件名: \`${ARCHIVE_NAME}\`
+          - 附件字节数: \`${ACTUAL_BYTES}\` bytes
+          - SHA-256: \`${ACTUAL_SHA256}\`
+          EOF
+          )"
+
+          gh release create "${VERSION_TAG}" "${ARCHIVE_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "${VERSION_TAG}" \
+            --notes "${NOTES}"
