@@ -558,3 +558,95 @@ test('lookup - 2024 全部 38 种基础武器、13 种基础护甲与 26 项种�
     assert.equal(res.entry.category, 'origin', `rule "${name}" 必须命中 origin 类别，实际: ${res.entry.category}`);
   }
 });
+
+test('lookup (T7) - 仅设 DND_DB_DIR 时 setup-db 与 lookup 端到端可用，且优先级 DND_DB_PATH > DND_DB_DIR > 默认位置', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { packDbArchive } = await import('../scripts/setup-db.js');
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-t7-dbdir-'));
+  const srcDir = path.join(tmpRoot, 'src');
+  const targetDbDir = path.join(tmpRoot, 'custom-db-dir');
+  const emptyDbDir = path.join(tmpRoot, 'empty-db-dir');
+  fs.mkdirSync(srcDir, { recursive: true });
+  fs.mkdirSync(emptyDbDir, { recursive: true });
+
+  try {
+    // 构造带唯一哨兵词条的迷你 SQLite 规则库并打包
+    const mockDbPath = path.join(srcDir, 'rules.db');
+    const mockIdxPath = path.join(srcDir, 'topics_index.json');
+    const db = new DatabaseSync(mockDbPath);
+    db.exec(`
+      CREATE TABLE entries (
+        id INTEGER PRIMARY KEY, category TEXT, title TEXT, title_en TEXT,
+        aliases TEXT, url TEXT, anchor TEXT, edition TEXT, content_md TEXT, brief_md TEXT
+      );
+      CREATE VIRTUAL TABLE entries_fts USING fts5(title, title_en, aliases, content_md, content='entries', content_rowid='id', tokenize='trigram');
+    `);
+    db.prepare(`INSERT INTO entries VALUES (99901, 'monster', '便携目录哨兵龙', 'Portable Sentinel Dragon', '', '测试/哨兵龙.htm', '', '2024', '便携目录哨兵龙正文', '[怪物] 便携目录哨兵龙 | AC 19 | HP 99')`).run();
+    db.prepare(`INSERT INTO entries_fts (rowid, title, title_en, aliases, content_md) VALUES (99901, '便携目录哨兵龙', 'Portable Sentinel Dragon', '', '便携目录哨兵龙正文')`).run();
+    db.close();
+    fs.writeFileSync(mockIdxPath, JSON.stringify([{ id: 99901, category: 'monster', title: '便携目录哨兵龙', url: '测试/哨兵龙.htm', edition: '2024' }]));
+
+    const bundlePath = path.join(tmpRoot, 'sentinel.tar.gz');
+    const packed = await packDbArchive({ rulesDbPath: mockDbPath, topicsIndexPath: mockIdxPath, outArchivePath: bundlePath });
+
+    // 1. 仅设置 DND_DB_DIR 运行 setup-db.js 解压安装
+    const cleanEnv = { ...process.env, DND_DB_DIR: targetDbDir };
+    delete cleanEnv.DND_DB_PATH;
+    delete cleanEnv.DND_INDEX_PATH;
+
+    const setupRes = spawnSync(
+      process.execPath,
+      [path.join(ROOT_DIR, 'scripts', 'setup-db.js'), '--from-release', '--url', bundlePath, '--sha256', packed.sha256, '--force'],
+      { cwd: os.tmpdir(), env: cleanEnv, encoding: 'utf8' }
+    );
+    assert.equal(setupRes.status, 0, `setup-db 配合 DND_DB_DIR 应成功，实际: ${setupRes.stderr}`);
+    assert.ok(fs.existsSync(path.join(targetDbDir, 'rules.db')), 'rules.db 应写入 DND_DB_DIR');
+
+    // 2. 仅设置 DND_DB_DIR 运行 lookup.js 查询哨兵词条
+    const lookupRes = spawnSync(
+      process.execPath,
+      [path.join(ROOT_DIR, 'scripts', 'lookup.js'), 'monster', '便携目录哨兵龙', '--brief'],
+      { cwd: os.tmpdir(), env: cleanEnv, encoding: 'utf8' }
+    );
+    assert.equal(lookupRes.status, 0);
+    assert.ok(
+      lookupRes.stdout.includes('便携目录哨兵龙'),
+      `仅设 DND_DB_DIR 时 lookup.js 必须读取该目录数据库而非默认库，实际输出: ${lookupRes.stdout}`
+    );
+
+    // 3. 同时设置 DND_DB_PATH 与 DND_DB_DIR 时，DND_DB_PATH 优先
+    const overrideEnv = {
+      ...cleanEnv,
+      DND_DB_DIR: emptyDbDir,
+      DND_DB_PATH: path.join(targetDbDir, 'rules.db')
+    };
+    const prioRes = spawnSync(
+      process.execPath,
+      [path.join(ROOT_DIR, 'scripts', 'lookup.js'), 'monster', '便携目录哨兵龙', '--brief'],
+      { cwd: os.tmpdir(), env: overrideEnv, encoding: 'utf8' }
+    );
+    assert.ok(prioRes.stdout.includes('便携目录哨兵龙'), 'DND_DB_PATH 优先级必须高于 DND_DB_DIR');
+
+    // 4. 缺库提示必须包含 DND_DB_DIR 与 DND_DB_PATH，且 README 写明三个环境变量
+    const missEnv = { ...cleanEnv, DND_DB_DIR: emptyDbDir };
+    const missRes = spawnSync(
+      process.execPath,
+      [path.join(ROOT_DIR, 'scripts', 'lookup.js'), 'monster', '地精武者'],
+      { cwd: os.tmpdir(), env: missEnv, encoding: 'utf8' }
+    );
+    const missOut = `${missRes.stdout || ''}${missRes.stderr || ''}`;
+    assert.ok(
+      missOut.includes('DND_DB_DIR') && missOut.includes('DND_DB_PATH'),
+      `缺库提示必须带上 DND_DB_DIR 与 DND_DB_PATH，实际: ${missOut}`
+    );
+
+    const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
+    for (const envName of ['DND_DB_DIR', 'DND_DB_PATH', 'DND_SESSIONS_DIR']) {
+      assert.ok(readme.includes(envName), `README.md 必须写明环境变量 ${envName}`);
+    }
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+

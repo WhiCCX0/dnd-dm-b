@@ -1,6 +1,6 @@
 ---
 name: dnd-dm-b
-description: Complete D&D 5th Edition Chinese Dungeon Master Skill (Version B). Integrated with the massive Chinese D&D 5e compendium (5echm, 8,827 deduplicated entries & DMG 2024 full sample adventures + 38 classic modules). Features smart UTF-8/GBK rules lookup, cross-platform dice engine, Chinese 2024 premade characters, and tactical ASCII battle maps.
+description: Complete D&D 5th Edition Chinese Dungeon Master Skill (Version B). Integrated with the massive Chinese D&D 5e compendium (5echm, 8,910 deduplicated entries & DMG 2024 full sample adventures + 38 classic modules). Features smart UTF-8/GBK rules lookup, cross-platform dice engine, Chinese 2024 premade characters, and tactical ASCII battle maps.
 version: 2.2.0
 ---
 
@@ -11,7 +11,8 @@ version: 2.2.0
 > **跨 Agent 环境与路径约定**：
 > - **如何确定 `<SKILL_DIR>`**：`<SKILL_DIR>` 即当前 `SKILL.md` 文件所在的绝对目录路径（取你读取本 `SKILL.md` 时的父目录路径）。由于 Agent 的当前工作目录（`cwd`）通常位于用户项目而非技能目录，**所有脚本命令一律使用 `node <SKILL_DIR>/scripts/xxx.js ...` 完整路径执行**（脚本内部已按自身位置自动定位资源文件）。
 > - **战役存档路径**：默认保存在技能目录外的用户数据目录（Windows 为 `%APPDATA%\dnd-dm-b\sessions`，Linux/macOS 为 `~/.local/share/dnd-dm-b/sessions`）；若 `<SKILL_DIR>/sessions/` 旧位置已有同名存档，引擎会自动继续读取旧位置并提示可迁移；设置环境变量 `DND_SESSIONS_DIR` 时始终优先。
-> - **首次获取规则库**：若提示 `rules.db` 缺失，执行 `node <SKILL_DIR>/scripts/setup-db.js` 一键下载校验或本地构建。
+> - **规则库路径与首次获取**：`lookup.js` 按 `DND_DB_PATH` > `DND_DB_DIR` > 默认 `references/rules.db` 解析数据库位置；若提示 `rules.db` 缺失，执行 `node <SKILL_DIR>/scripts/setup-db.js` 一键下载校验或本地构建。
+> - **便携部署（非系统盘迁移）**：Windows 默认存档目录位于系统盘，为防重装系统盘丢失存档或重复下载规则库，可在 PowerShell 中将存档与数据库指向非系统盘（如 `D:\Data\dnd-dm-b`）：`[Environment]::SetEnvironmentVariable('DND_SESSIONS_DIR','D:\Data\dnd-dm-b\sessions','User')` 与 `[Environment]::SetEnvironmentVariable('DND_DB_DIR','D:\Data\dnd-dm-b\db','User')`。
 
 ### 架构金字塔 (Three-Tier Architecture)
 - **L0 常驻层（In-Context）**：协议直接内嵌《D&D 2024 核心执裁常驻微胶囊》、《Session 0 极速启动表单》与《DM 执裁 8 项分级门禁卡》，100% 常驻即时视野，杜绝规则脑补与虚假口胡。
@@ -21,7 +22,7 @@ version: 2.2.0
   - 规则与怪兽点查：`scripts/lookup.js --brief`（毫秒级紧凑数据卡）
   - 战役状态引擎：`scripts/state.js` 与 HUD 防漂移规范（`templates/hud-status-bar.md`）
 - **L2 深度规则与模组档案库 (Deep Vault)**：
-  - 123.54 MiB SQLite 全量库：`references/rules.db`（8,827 词条无截断全量库，含 2024 法术/专长/职业特性/装备锚点切片；通过 `scripts/setup-db.js` 获取）
+  - 124.40 MiB SQLite 全量库：`references/rules.db`（8,910 词条无截断全量库，含 2024 法术/专长/职业特性/装备锚点切片；通过 `scripts/setup-db.js` 获取）
   - DMG 2024 五大完整教学冒险、自创地窖与官方模组指南：`resources/starter-adventure/`
   - 6 套精制 2024 英雄卡 + 随从布兰档案与机器可读预设：`resources/premade-characters/`（含 `presets.json`）
   - 深度执裁手册：`dm-guide.md`
@@ -73,7 +74,7 @@ version: 2.2.0
 
 ---
 
-## 2. 8,827 词条中文规则库极速检索工具 (SQLite FTS5 + --brief 模式)
+## 2. 8,910 词条中文规则库极速检索工具 (SQLite FTS5 + --brief 模式)
 
 你拥有挂载在 `references/rules.db` 的原生预编译 SQLite FTS5 规则库。为节约上下文 Token 并确保 100% 规则严谨，**在遭遇战、施法或遇到生僻规则时，必须调用 `<SKILL_DIR>/scripts/lookup.js` 获取精确数据**：
 

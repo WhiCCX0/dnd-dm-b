@@ -33,6 +33,7 @@ jobs:
           path: |
             references/rules.db
             references/topics_index.json
+            references/dedup-report.json
           key: rules-db-${{ runner.os }}-${{ hashFiles('references/db-manifest.json', 'scripts/build-index.js', 'scripts/build-db.js', 'scripts/setup-db.js') }}
 
       - name: Prepare rules database

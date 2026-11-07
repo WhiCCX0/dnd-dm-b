@@ -37,15 +37,15 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 function resolveDbPath() {
-  return process.env.DND_DB_PATH
-    ? path.resolve(process.env.DND_DB_PATH)
-    : path.resolve(ROOT_DIR, 'references/rules.db');
+  if (process.env.DND_DB_PATH) return path.resolve(process.env.DND_DB_PATH);
+  if (process.env.DND_DB_DIR) return path.resolve(process.env.DND_DB_DIR, 'rules.db');
+  return path.resolve(ROOT_DIR, 'references/rules.db');
 }
 
 function resolveIndexPath() {
-  return process.env.DND_INDEX_PATH
-    ? path.resolve(process.env.DND_INDEX_PATH)
-    : path.resolve(ROOT_DIR, 'references/topics_index.json');
+  if (process.env.DND_INDEX_PATH) return path.resolve(process.env.DND_INDEX_PATH);
+  if (process.env.DND_DB_DIR) return path.resolve(process.env.DND_DB_DIR, 'topics_index.json');
+  return path.resolve(ROOT_DIR, 'references/topics_index.json');
 }
 
 export const VALID_COMMANDS = new Set([
@@ -1046,7 +1046,8 @@ function getFallbackIndex() {
 
 function getMissingDbGuide() {
   const setupScript = path.resolve(__dirname, 'setup-db.js');
-  return `未找到规则数据库（references/rules.db）：请运行 "node ${setupScript}" 一键获取（下载 Release 预编译包并校验 SHA-256，或加 "--from-source" 从 5echm_web@c1425c8 本地构建，详见 README.md）。`;
+  const expectedDb = resolveDbPath();
+  return `未找到规则数据库（${expectedDb}；可通过 DND_DB_PATH 或 DND_DB_DIR 指定数据库位置）：请运行 "node ${setupScript}" 一键获取（下载 Release 预编译包并校验 SHA-256，或加 "--from-source" 本地构建，详见 README.md）。`;
 }
 
 function queryFallback(command, query, isBrief, options = {}) {

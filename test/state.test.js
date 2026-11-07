@@ -583,3 +583,54 @@ test('state (R12.4 & R14) - 短休生命骰随机函数可注入，且存档目�
     }
   }
 });
+
+test('state (T8) - 文档含便携部署 PowerShell 说明，设置 DND_SESSIONS_DIR 写入目标目录，且位于系统盘时 init 给出迁移提示', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+
+  for (const docName of ['README.md', 'SKILL.md']) {
+    const content = fs.readFileSync(path.join(rootDir, docName), 'utf8');
+    assert.ok(content.includes('便携部署'), `${docName} 必须包含“便携部署”说明`);
+    assert.ok(
+      content.includes("[Environment]::SetEnvironmentVariable('DND_SESSIONS_DIR','D:\\Data\\dnd-dm-b\\sessions','User')"),
+      `${docName} 必须包含设置 DND_SESSIONS_DIR 的 PowerShell 示例`
+    );
+    assert.ok(content.includes('DND_DB_DIR'), `${docName} 便携部署说明应同步涵盖数据库位置变量 DND_DB_DIR`);
+  }
+
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-t8-port-'));
+  const customSessions = path.join(tmpBase, 'portable-d-drive', 'sessions');
+  const fakeSysDrive = path.join(tmpBase, 'fake-c-drive');
+  const fakeXdg = path.join(fakeSysDrive, 'appdata');
+
+  try {
+    // 1. 设置 DND_SESSIONS_DIR 指向非系统盘目录 -> 写入该目录且不提示系统盘迁移
+    const envPortable = { ...process.env, DND_SESSIONS_DIR: customSessions, SystemDrive: fakeSysDrive };
+    const rPortable = spawnSync(
+      process.execPath,
+      [path.join(rootDir, 'scripts', 'state.js'), 'init', 't8-portable', '--force'],
+      { cwd: os.tmpdir(), env: envPortable, encoding: 'utf8' }
+    );
+    assert.equal(rPortable.status, 0);
+    assert.ok(fs.existsSync(path.join(customSessions, 't8-portable', 'state.json')), '存档应写入 DND_SESSIONS_DIR 指定目录');
+    assert.ok(!rPortable.stdout.includes('系统盘'), '已位于非系统盘时不应输出系统盘迁移提示');
+
+    // 2. 存档路径位于系统盘 (SystemDrive) -> init 输出一行提示可用 DND_SESSIONS_DIR 迁移
+    const envSysDrive = { ...process.env, SystemDrive: fakeSysDrive, XDG_DATA_HOME: fakeXdg, APPDATA: fakeXdg };
+    delete envSysDrive.DND_SESSIONS_DIR;
+    delete envSysDrive.SESSIONS_DIR;
+    const rSys = spawnSync(
+      process.execPath,
+      [path.join(rootDir, 'scripts', 'state.js'), 'init', 't8-sysdrive', '--force'],
+      { cwd: os.tmpdir(), env: envSysDrive, encoding: 'utf8' }
+    );
+    assert.equal(rSys.status, 0);
+    assert.ok(
+      rSys.stdout.includes('系统盘') && rSys.stdout.includes('DND_SESSIONS_DIR'),
+      `存档位于系统盘时 init 必须附一行提示可用 DND_SESSIONS_DIR 迁移，实际输出:\n${rSys.stdout}`
+    );
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+

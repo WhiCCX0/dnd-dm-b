@@ -508,3 +508,240 @@ test('gate - GitHub Actions CI 数据库初始化顺序与模板 2024 数值/术
   assert.ok(tracker.includes('| 12 | 8 / 8 |'), 'combat-tracker.md 中法师阿里斯泰尔 AC/HP 应与 presets.json (AC 12, HP 8/8) 一致');
 });
 
+test('gate (T3) - dedup-report.json 零跨来源书合并，且被合并条目的全部骰式均保留在主条目正文中', async () => {
+  const reportPath = path.join(rootDir, 'references', 'dedup-report.json');
+  assert.ok(fs.existsSync(reportPath), 'references/dedup-report.json 必须由构建流程生成并存在');
+
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+  assert.ok(Array.isArray(report.merges), 'dedup-report.json 必须包含 merges 数组');
+
+  const db = new DatabaseSync(path.join(rootDir, 'references', 'rules.db'));
+  try {
+    const getEntry = db.prepare('SELECT id, title, url, content_md FROM entries WHERE id = ?');
+    for (const rec of report.merges) {
+      assert.ok(rec.keptId && rec.mergedId, `合并记录缺少 id: ${JSON.stringify(rec)}`);
+      assert.ok(rec.keptTitle && rec.mergedTitle, `合并记录缺少标题: ${JSON.stringify(rec)}`);
+      assert.ok(rec.keptSource && rec.mergedSource, `合并记录缺少来源: ${JSON.stringify(rec)}`);
+      assert.equal(typeof rec.similarity, 'number', `合并记录缺少相似度数值: ${JSON.stringify(rec)}`);
+      assert.equal(typeof rec.keptLength, 'number', `合并记录缺少保留正文长度: ${JSON.stringify(rec)}`);
+      assert.equal(typeof rec.mergedLength, 'number', `合并记录缺少被合并正文长度: ${JSON.stringify(rec)}`);
+      assert.equal(
+        rec.keptSource,
+        rec.mergedSource,
+        `禁止跨来源书自动合并！发现 ${rec.keptSource} (#${rec.keptId}) 吞并 ${rec.mergedSource} (#${rec.mergedId})`
+      );
+
+      const keptRow = getEntry.get(rec.keptId);
+      assert.ok(keptRow, `保留条目 #${rec.keptId} 必须存在于 rules.db`);
+      const keptLower = keptRow.content_md.replace(/\s+/g, '').toLowerCase();
+      for (const die of rec.mergedDice || []) {
+        const normDie = String(die).replace(/\s+/g, '').toLowerCase();
+        assert.ok(
+          keptLower.includes(normDie),
+          `被合并条目 #${rec.mergedId} 中的骰式 "${die}" 必须保留在主条目 #${rec.keptId} 正文中`
+        );
+      }
+    }
+  } finally {
+    db.close();
+  }
+
+  // 直接单元测试去重函数的跨来源保护、长度差异与骰式/数字差异保护
+  const buildMod = await import('../scripts/build-db.js');
+  assert.equal(typeof buildMod.deduplicateAndDisambiguateEntries, 'function', 'build-db.js 应导出 deduplicateAndDisambiguateEntries');
+
+  const synthetic = [
+    {
+      id: 1, category: 'monster', title: '凝视者眼魔', titleEn: 'Gazer', aliases: [],
+      url: '多元宇宙的怪物/图鉴/异怪/凝视者眼魔.htm', anchor: '', edition: '5e',
+      contentMd: '小型异怪，绝对中立。AC 13，HP 13 (3d4+6)。啃咬：1d4 穿刺伤害。', briefMd: ''
+    },
+    {
+      id: 2, category: 'monster', title: '凝视者眼魔', titleEn: 'Gazer', aliases: [],
+      url: '瓦罗怪物指南/图鉴/凝视者眼魔.htm', anchor: '', edition: '5e',
+      contentMd: '小型异怪，绝对中立。AC 13，HP 13 (3d4+6)。啃咬：1d4 穿刺伤害。', briefMd: ''
+    },
+    {
+      id: 3, category: 'monster', title: '同书测试怪', titleEn: 'Test Mob', aliases: [],
+      url: '怪物图鉴2025/测试/怪A.htm', anchor: '', edition: '2024',
+      contentMd: '中型怪兽。AC 14，HP 22 (4d8+4)。爪击命中造成 1d6+2 挥砍伤害。', briefMd: ''
+    },
+    {
+      id: 4, category: 'monster', title: '同书测试怪', titleEn: 'Test Mob', aliases: [],
+      url: '怪物图鉴2025/测试/怪B.htm', anchor: '', edition: '2024',
+      contentMd: '中型怪兽。AC 14，HP 22 (4d8+4)。爪击命中造成 2d6+3 挥砍伤害。', briefMd: ''
+    }
+  ];
+  const synRes = buildMod.deduplicateAndDisambiguateEntries(synthetic);
+  assert.equal(synRes.mergedCount, 0, '跨来源书同文条目与同书不同骰式条目均不得合并');
+  assert.equal(synRes.finalEntries.length, 4, '4 条均应保留并通过来源后缀区分');
+});
+
+test('gate (T4) - 五篇 DMG 2024 主持包“奖励与 XP”严格区分原文与 DM 裁定', () => {
+  const dmg2 = fs.readFileSync(path.join(rootDir, 'resources', 'starter-adventure', 'dmg-2-miner-difficulties.md'), 'utf8');
+  assert.ok(
+    !dmg2.includes('杀掉或通过清理底层东南角碎石放走'),
+    'dmg-2-miner-difficulties.md 不得将“杀掉恐爪怪获 200 XP”写为原文'
+  );
+  assert.ok(
+    dmg2.includes('清理碎石放走') && dmg2.includes('200 XP（原文）') && dmg2.includes('原文未单列 XP'),
+    'dmg-2-miner-difficulties.md 须明确标注放走恐爪怪获 200 XP（原文），击杀按 CR 常规 XP 结算（DM 裁定）'
+  );
+});
+
+test('gate (T5) - 全仓 Markdown 中所有 #编号 引用均存在且标题/别名与紧邻名称一致', (t) => {
+  const db = new DatabaseSync(path.join(rootDir, 'references', 'rules.db'));
+  try {
+    const mdFiles = [];
+    const walk = (dir) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (ent.name === '.git' || ent.name === 'node_modules') continue;
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(full);
+        else if (ent.name.endsWith('.md')) mdFiles.push(full);
+      }
+    };
+    walk(rootDir);
+
+    const getRow = db.prepare('SELECT id, title, title_en, aliases FROM entries WHERE id = ?');
+    const mismatches = [];
+    let totalChecked = 0;
+
+    for (const file of mdFiles) {
+      const rel = path.relative(rootDir, file);
+      const txt = fs.readFileSync(file, 'utf8');
+      const seenAt = new Set();
+
+      const patterns = [
+        /`([^`\n#]+?)`\s*(?:[（(]\s*`?#(\d{2,5})`?|`#(\d{2,5})`)/g,
+        /`([^`\n#]+?)\s+#(\d{2,5})`/g,
+        /《([^》\n]+?)》[^\n#]{0,45}?`?#(\d{2,5})`?/g
+      ];
+
+      for (const re of patterns) {
+        let m;
+        while ((m = re.exec(txt)) !== null) {
+          const rawName = m[1].trim();
+          if (rawName.endsWith('.md')) continue;
+          const id = Number(m[2] || m[3]);
+          const dedupKey = `${m.index}:${id}`;
+          if (seenAt.has(dedupKey)) continue;
+          seenAt.add(dedupKey);
+
+          totalChecked++;
+          const row = getRow.get(id);
+          if (!row) {
+            mismatches.push(`${rel}: "${rawName}" 指向不存在的条目 #${id}`);
+            continue;
+          }
+          const zhName = (rawName.match(/[\u4e00-\u9fa5·]+/) || [rawName])[0];
+          const hay = `${row.title} | ${row.title_en || ''} | ${row.aliases || ''}`.toLowerCase();
+          if (!hay.includes(zhName.toLowerCase()) && !hay.includes(rawName.toLowerCase())) {
+            mismatches.push(`${rel}: "${rawName}" (#${id}) 实际指向 "${row.title}" (${row.title_en || ''})`);
+          }
+        }
+      }
+    }
+
+    t.diagnostic(`T5 扫描 #编号 引用总数: ${totalChecked}, 失配数: ${mismatches.length}`);
+    assert.ok(totalChecked >= 45, `应至少扫描到 45 处带名称的 #编号 引用，实际: ${totalChecked}`);
+    assert.deepEqual(mismatches, [], `发现 #编号 引用失配:\n${mismatches.join('\n')}`);
+  } finally {
+    db.close();
+  }
+});
+
+test('gate (T6) - setup-db 下载支持连接/空闲超时、离线安装提示、NO_PROXY 与进度输出', async () => {
+  const net = await import('node:net');
+  const http = await import('node:http');
+  const setupMod = await import('../scripts/setup-db.js');
+  const { downloadArchive } = setupMod;
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-t6-dl-'));
+  // 1. 只接受 TCP 连接但永不响应的挂起服务器 -> 必须在超时时间内报错退出并给出离线安装提示
+  const hangServer = net.createServer((_socket) => {
+    // intentionally never send data or close
+  });
+  await new Promise(resolve => hangServer.listen(0, '127.0.0.1', resolve));
+  const hangPort = hangServer.address().port;
+
+  try {
+    const startMs = Date.now();
+    let caughtErr = null;
+    try {
+      await Promise.race([
+        downloadArchive(`http://127.0.0.1:${hangPort}/hang.tar.gz`, path.join(tmpDir, 'hang.tar.gz'), 5, {
+          connectTimeoutMs: 250,
+          idleTimeoutMs: 250,
+          noProxy: '127.0.0.1,localhost'
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TEST_GUARD_HUNG_FOREVER')), 2000))
+      ]);
+    } catch (err) {
+      caughtErr = err;
+    }
+    const elapsed = Date.now() - startMs;
+    assert.ok(caughtErr, '面对不响应服务器必须抛出超时错误');
+    assert.notEqual(caughtErr.message, 'TEST_GUARD_HUNG_FOREVER', 'downloadArchive 未实现连接/响应超时，一直挂起');
+    assert.ok(elapsed < 1800, `应在超时阈值附近快速退出，实际耗时 ${elapsed}ms`);
+    assert.equal(caughtErr.message.trim().split(/\r?\n/).length, 1, `超时报错应为单行明确提示，实际: ${caughtErr.message}`);
+    assert.ok(
+      caughtErr.message.includes('超时') && caughtErr.message.includes('--from-release --url'),
+      `超时错误须包含“超时”与离线安装提示 (--from-release --url)，实际: ${caughtErr.message}`
+    );
+  } finally {
+    hangServer.close();
+  }
+
+  // 2. NO_PROXY 绕过不可用代理 + 每 10% 输出下载进度
+  const payload = Buffer.alloc(1024 * 100, 0x61); // 100 KiB
+  const okServer = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': String(payload.length) });
+    for (let i = 0; i < 10; i++) {
+      res.write(payload.subarray(i * 10240, (i + 1) * 10240));
+    }
+    res.end();
+  });
+  await new Promise(resolve => okServer.listen(0, '127.0.0.1', resolve));
+  const okPort = okServer.address().port;
+
+  const logs = [];
+  try {
+    const outFile = path.join(tmpDir, 'ok.tar.gz');
+    await downloadArchive(`http://127.0.0.1:${okPort}/ok.tar.gz`, outFile, 5, {
+      proxyEnv: 'http://127.0.0.1:1', // 死代理：若不尊重 NO_PROXY 将直接连接失败
+      noProxy: '127.0.0.1,localhost',
+      onProgress: (line) => logs.push(line)
+    });
+    assert.equal(fs.statSync(outFile).size, payload.length);
+    assert.ok(logs.length >= 1 && logs.some(l => l.includes('%')), `应输出百分比下载进度，实际: ${JSON.stringify(logs)}`);
+  } finally {
+    okServer.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('gate (T1) - db-manifest 存完整 40 位 SHA，setupFromSource 仅浅拉取单提交，README 含离线安装说明', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'references', 'db-manifest.json'), 'utf8'));
+  assert.match(
+    manifest.upstreamCommit || '',
+    /^[a-f0-9]{40}$/,
+    `db-manifest.json 中 upstreamCommit 必须为完整 40 位 SHA，实际: ${manifest.upstreamCommit}`
+  );
+
+  const setupSrc = fs.readFileSync(path.join(rootDir, 'scripts', 'setup-db.js'), 'utf8');
+  assert.ok(
+    setupSrc.includes("'fetch', '--depth', '1'") || setupSrc.includes('"fetch", "--depth", "1"'),
+    'setupFromSource 必须使用 git fetch --depth 1 只拉取目标提交'
+  );
+  assert.ok(setupSrc.includes('FETCH_HEAD'), 'setupFromSource 必须检出 FETCH_HEAD');
+  assert.ok(!setupSrc.includes("'clone', '--no-checkout'"), 'setupFromSource 不得再使用全历史 git clone --no-checkout');
+
+  const readme = fs.readFileSync(path.join(rootDir, 'README.md'), 'utf8');
+  assert.ok(
+    readme.includes('离线安装') && readme.includes('--from-release --url'),
+    'README.md 必须包含使用 setup-db.js --from-release --url <本地路径> 的离线安装说明'
+  );
+});
+
+

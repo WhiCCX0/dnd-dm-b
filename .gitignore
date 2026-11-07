@@ -14,6 +14,7 @@ yarn-error.log*
 # SQLite database, compiled index, journals & raw source files
 references/rules.db
 references/topics_index.json
+references/dedup-report.json
 *.db-journal
 *.db-wal
 *.db-shm

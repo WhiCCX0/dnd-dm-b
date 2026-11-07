@@ -497,12 +497,84 @@ function normalizeForSimilarity(md) {
 }
 
 function charBigrams(normStr) {
-  const s = normStr.slice(0, 3000);
   const set = new Set();
-  for (let i = 0; i < s.length - 1; i++) {
-    set.add(s.slice(i, i + 2));
+  for (let i = 0; i < normStr.length - 1; i++) {
+    set.add(normStr.slice(i, i + 2));
   }
   return set;
+}
+
+const MULTI_BOOK_FOLDERS = new Set(['模组', '第三方', '其他', 'DNDBeyond', '被遗忘的国度']);
+
+export function getSourceBook(url) {
+  const parts = String(url || '').replace(/\\/g, '/').split('/').filter(Boolean);
+  if (parts.length === 0) return '';
+  if (MULTI_BOOK_FOLDERS.has(parts[0]) && parts.length >= 2) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0];
+}
+
+export function extractDiceFormulas(text) {
+  const str = String(text || '');
+  const re = /\b(?:\d+\s*d\s*\d+|d(?:4|6|8|10|12|20|100))(?:\s*(?:kh|kl)\s*\d+)?(?:\s*[+\-−]\s*\d+)?\b/gi;
+  const set = new Set();
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    set.add(m[0].replace(/\s+/g, '').replace(/−/g, '-').toLowerCase());
+  }
+  return [...set];
+}
+
+function extractNumericTokens(text) {
+  const str = String(text || '');
+  const matches = str.match(/\d+(?:\.\d+)?/g) || [];
+  return new Set(matches);
+}
+
+function canSafelyMerge(primary, primaryNorm, cand, candNorm) {
+  const primaryBook = getSourceBook(primary.url);
+  const candBook = getSourceBook(cand.url);
+  if (!primaryBook || primaryBook !== candBook) {
+    return { ok: false, similarity: 0 };
+  }
+
+  const pLen = (primary.contentMd || '').length;
+  const cLen = (cand.contentMd || '').length;
+  const maxLen = Math.max(pLen, cLen, 1);
+  if (Math.abs(pLen - cLen) / maxLen > 0.10) {
+    return { ok: false, similarity: 0 };
+  }
+
+  const sim = computeSimilarity(primaryNorm, candNorm);
+  if (sim < 0.68) {
+    return { ok: false, similarity: sim };
+  }
+
+  // Ensure every dice formula in cand appears in primary's content
+  const candDice = extractDiceFormulas(cand.contentMd);
+  if (candDice.length > 0) {
+    const primaryDiceSet = new Set(extractDiceFormulas(primary.contentMd));
+    const primaryCompact = String(primary.contentMd || '').replace(/\s+/g, '').replace(/−/g, '-').toLowerCase();
+    for (const d of candDice) {
+      if (!primaryDiceSet.has(d) || !primaryCompact.includes(d)) {
+        return { ok: false, similarity: sim };
+      }
+    }
+  }
+
+  // Ensure every numeric token in cand also exists in primary's content
+  const candNums = extractNumericTokens(cand.contentMd);
+  if (candNums.size > 0) {
+    const primaryNums = extractNumericTokens(primary.contentMd);
+    for (const num of candNums) {
+      if (!primaryNums.has(num)) {
+        return { ok: false, similarity: sim };
+      }
+    }
+  }
+
+  return { ok: true, similarity: sim, candDice };
 }
 
 function computeSimilarity(normA, normB) {
@@ -610,7 +682,7 @@ function deriveSourceLabels(entry) {
   return [...new Set(candidates.filter(Boolean))];
 }
 
-function deduplicateAndDisambiguateEntries(prepared) {
+export function deduplicateAndDisambiguateEntries(prepared) {
   const groups = new Map();
   for (const entry of prepared) {
     const key = `${entry.edition}::${entry.title.trim().toLowerCase()}`;
@@ -620,6 +692,7 @@ function deduplicateAndDisambiguateEntries(prepared) {
 
   let mergedCount = 0;
   let disambiguatedCount = 0;
+  const mergeRecords = [];
   const stage1Groups = [];
 
   for (const group of groups.values()) {
@@ -639,16 +712,32 @@ function deduplicateAndDisambiguateEntries(prepared) {
     for (const cand of group) {
       const candNorm = normalizeForSimilarity(cand.contentMd);
       let matchedIdx = -1;
+      let matchedCheck = null;
       for (let i = 0; i < kept.length; i++) {
-        const sim = computeSimilarity(keptNorms[i], candNorm);
-        if (sim >= 0.68) {
+        const check = canSafelyMerge(kept[i], keptNorms[i], cand, candNorm);
+        if (check.ok) {
           matchedIdx = i;
+          matchedCheck = check;
           break;
         }
       }
 
       if (matchedIdx !== -1) {
         const primary = kept[matchedIdx];
+        mergeRecords.push({
+          keptId: primary.id,
+          keptTitle: primary.title,
+          keptSource: getSourceBook(primary.url),
+          keptUrl: primary.url,
+          keptLength: (primary.contentMd || '').length,
+          mergedId: cand.id,
+          mergedTitle: cand.title,
+          mergedSource: getSourceBook(cand.url),
+          mergedUrl: cand.url,
+          mergedLength: (cand.contentMd || '').length,
+          similarity: Number(matchedCheck.similarity.toFixed(6)),
+          mergedDice: matchedCheck.candDice || []
+        });
         if (!primary.titleEn && cand.titleEn) {
           primary.titleEn = cand.titleEn;
         }
@@ -724,7 +813,7 @@ function deduplicateAndDisambiguateEntries(prepared) {
   }
 
   finalEntries.sort((a, b) => a.id - b.id);
-  return { finalEntries, mergedCount, disambiguatedCount };
+  return { finalEntries, mergedCount, disambiguatedCount, mergeRecords };
 }
 
 function main() {
@@ -879,8 +968,8 @@ function main() {
       });
     }
 
-    const { finalEntries, mergedCount, disambiguatedCount } = deduplicateAndDisambiguateEntries(preparedEntries);
-    console.log(`R11 deduplication complete: merged ${mergedCount} duplicate entries, disambiguated ${disambiguatedCount} distinct same-title entries -> ${finalEntries.length} final entries.`);
+    const { finalEntries, mergedCount, disambiguatedCount, mergeRecords } = deduplicateAndDisambiguateEntries(preparedEntries);
+    console.log(`R11/T3 deduplication complete: merged ${mergedCount} same-book duplicate entries, disambiguated ${disambiguatedCount} distinct same-title entries -> ${finalEntries.length} final entries.`);
 
     const insertEntry = db.prepare(`
       INSERT INTO entries (id, category, title, title_en, aliases, url, anchor, edition, content_md, brief_md)
@@ -930,9 +1019,15 @@ function main() {
       }
     }
 
+    const upstreamCommitVal = process.env.UPSTREAM_COMMIT || 'c1425c8e90804766689a0db7ec416833f3fc3046';
+    const buildDateVal = process.env.SOURCE_DATE_EPOCH
+      ? new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString()
+      : (upstreamCommitVal === 'c1425c8e90804766689a0db7ec416833f3fc3046'
+        ? '2026-10-02T16:42:07.000Z'
+        : new Date().toISOString());
     insertMeta.run('upstream_repo', 'https://github.com/DND5eChm/5echm_web');
-    insertMeta.run('upstream_commit', process.env.UPSTREAM_COMMIT || 'c1425c8');
-    insertMeta.run('build_date', new Date().toISOString());
+    insertMeta.run('upstream_commit', upstreamCommitVal);
+    insertMeta.run('build_date', buildDateVal);
     insertMeta.run('entry_count', String(count));
     insertMeta.run('fts_tokenizer', 'trigram');
 
@@ -959,6 +1054,24 @@ function main() {
     const tmpIdxPath = `${indexFile}.${process.pid}.sync.tmp`;
     fs.writeFileSync(tmpIdxPath, JSON.stringify(syncedIndex, null, 2), 'utf8');
     fs.renameSync(tmpIdxPath, indexFile);
+
+    // T3: Emit references/dedup-report.json alongside rules.db
+    const dedupReportPath = process.env.DND_DEDUP_REPORT_PATH
+      ? path.resolve(process.env.DND_DEDUP_REPORT_PATH)
+      : path.join(path.dirname(dbPath), 'dedup-report.json');
+    const crossSourceCount = mergeRecords.filter(r => r.keptSource !== r.mergedSource).length;
+    const dedupReport = {
+      upstreamCommit: upstreamCommitVal,
+      rawEntryCount: preparedEntries.length,
+      finalEntryCount: finalEntries.length,
+      mergedCount,
+      crossSourceMergedCount: crossSourceCount,
+      disambiguatedCount,
+      merges: mergeRecords
+    };
+    const tmpReportPath = `${dedupReportPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpReportPath, JSON.stringify(dedupReport, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmpReportPath, dedupReportPath);
 
     // Atomically replace target DB only after complete success
     fs.renameSync(tmpDbPath, dbPath);

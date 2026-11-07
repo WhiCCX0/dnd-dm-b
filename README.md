@@ -1,7 +1,7 @@
 # D&D 5e 中文全规则地下城主技能 (B版 / 5echm 不全书版) 🐉
 
 > **全中文、全扩展、集大成版的 D&D 5e (2024/2025 修订版 + 全官方扩展 + DMG 2024 五大完整冒险 + 38 部经典模组附录) 跑团主持技能。**  
-> 深度挂载国内最权威的 **《DND 5e 不全书》(5echm)** 规则库（8,827 个合并去重与来源区分索引条目），具备 UTF-8/GBK 智能双模解码与 Markdown 表格转译、毫秒级词条检索器、跨平台原生骰子引擎、多角色小队状态管理器与战术战况图生成。  
+> 深度挂载国内最权威的 **《DND 5e 不全书》(5echm)** 规则库（8,910 个合并去重与来源区分索引条目），具备 UTF-8/GBK 智能双模解码与 Markdown 表格转译、毫秒级词条检索器、跨平台原生骰子引擎、多角色小队状态管理器与战术战况图生成。  
 > **2.2.0 架构特性**：确立 **三级收敛分层架构**，内嵌 **2024 核心执裁常驻微胶囊**，确立 **真机物理掷骰铁律**，绑定 **Session 0 官方开局接口** 与 **DM 执裁 8 项分级门禁卡**，兼容任意 AI Agent 运行环境。
 
 ---
@@ -11,7 +11,7 @@
 - 🏛️ **L0/L1/L2 三级收敛分层架构**：
   - **L0 常驻微胶囊**：2024 八大武器精通、六大核心新规、标准 DC 字典 100% 常驻即时视野；
   - **L1 运行工具与切片**：`session-zero-interface.md`（标准开局）、`roll-dice.js`（物理真骰）、`lookup.js --brief`（紧凑数据卡）、`state.js`（小队与战局状态锁）；
-  - **L2 深度宝库**：123.54 MiB SQLite FTS5 无截断全量库（`129,536,000` 字节，8,827 词条，含 391 道 2024 法术、456 项 2024 魔法物品与装备切片、74 项 2024 专长、386 项 2024 职业特性切片；完整正文零截断、全文检索零截断）按需毫秒级点查。
+  - **L2 深度宝库**：124.40 MiB SQLite FTS5 无截断全量库（`130,441,216` 字节，8,910 词条，含 391 道 2024 法术、456 项 2024 魔法物品与装备切片、74 项 2024 专长、386 项 2024 职业特性切片；完整正文零截断、全文检索零截断）按需毫秒级点查。
 - 🎲 **真机物理掷骰铁律 (`scripts/roll-dice.js`)**：
   - 严禁 AI 凭空捏造掷骰数字。支持 `--attack --ac <N>` 攻击自动判定（自然 20 必中、自然 1 必失手）、复合算式、优劣势、暴击翻倍与 `--hidden` 暗骰（隐藏标签，单行输出总值及 `HIT`/`MISS`/`CRIT`/`AUTO-MISS`/`PASS`/`FAIL`/`NAT20`/`NAT1`）。
 - 📜 **Session 0 官方标准开局接口 (`references/session-zero-interface.md`)**：
@@ -33,18 +33,38 @@
 
 ### 0. 获取规则数据库（首次克隆必做，零 npm 依赖）
 
-为避免超过 GitHub 100 MiB 单文件限制并保证长文与全文索引 100% 完整，`references/rules.db`（`129,536,000` 字节 / `123.54 MiB`）与 `references/topics_index.json`（`2,417,914` 字节 / `2.31 MiB`）不纳入 Git 跟踪。首次克隆后只需执行**一条命令**即可自动就绪：
+为避免超过 GitHub 100 MiB 单文件限制并保证长文与全文索引 100% 完整，`references/rules.db`（`130,441,216` 字节 / `124.40 MiB`）与 `references/topics_index.json`（`2,440,217` 字节 / `2.33 MiB`）不纳入 Git 跟踪。首次克隆后只需执行**一条命令**即可自动就绪：
 
 ```bash
-# 一键自动获取（优先下载 GitHub Release 预编译包并严格校验 SHA-256；若尚未发布则自动拉取上游源码构建）
+# 一键自动获取（优先下载 GitHub Release 预编译包并严格校验 SHA-256；若尚未发布则自动浅拉取上游单提交源码构建）
 node <SKILL_DIR>/scripts/setup-db.js
 
-# 也可显式指定获取方式（两种方式均不依赖任何第三方 npm 包）：
-# 方式 ①：从 GitHub Release 下载预编译压缩包 (66,175,625 字节 / 63.11 MiB) 并校验 SHA-256
+# 也可显式指定获取方式（均不依赖任何第三方 npm 包）：
+# 方式 ①：从 GitHub Release 下载预编译压缩包 (66,531,635 字节 / 63.45 MiB) 并校验 SHA-256
 node <SKILL_DIR>/scripts/setup-db.js --from-release
 
-# 方式 ②：从 DND5eChm/5echm_web 固定提交 (c1425c8) 本地构建索引与 SQLite 数据库
+# 方式 ②：从 DND5eChm/5echm_web 固定提交 (c1425c8e90804766689a0db7ec416833f3fc3046) 仅浅拉取单提交本地构建
 node <SKILL_DIR>/scripts/setup-db.js --from-source
+```
+
+#### 离线安装（网络受限环境推荐）
+若命令行直连 GitHub 受限，可通过浏览器或其他下载工具自行从 GitHub Releases 下载预编译压缩包 `dnd-dm-b-rules-db-v2.2.0.tar.gz` 到本地磁盘，然后指定本地文件路径完成离线校验与解压：
+
+```bash
+node <SKILL_DIR>/scripts/setup-db.js --from-release --url <本地压缩包路径>
+```
+
+#### 环境变量与便携部署（非系统盘迁移）
+支持通过以下三个环境变量自定义规则数据库与战役存档的位置：
+- `DND_DB_DIR`：指定数据库目录（同时供 `setup-db.js` 写入与 `lookup.js` 读取 `rules.db` / `topics_index.json`）。
+- `DND_DB_PATH`：指定单个 `rules.db` 文件的完整路径（在 `lookup.js` 中优先级为：`DND_DB_PATH` > `DND_DB_DIR` > 默认 `<SKILL_DIR>/references/rules.db`）。
+- `DND_SESSIONS_DIR`：指定战役存档目录（覆盖默认的 Windows `%APPDATA%\dnd-dm-b\sessions` 或 Linux/macOS `~/.local/share/dnd-dm-b/sessions`）。
+
+**Windows 便携部署示例（PowerShell）**：Windows 默认存档目录位于系统盘（`C:` 盘），为防止重装系统盘丢失跑团存档或重复构建规则库，可在 PowerShell 中将其永久指向非系统盘（如 D 盘下的 `Data\dnd-dm-b`）：
+
+```powershell
+[Environment]::SetEnvironmentVariable('DND_SESSIONS_DIR','D:\Data\dnd-dm-b\sessions','User')
+[Environment]::SetEnvironmentVariable('DND_DB_DIR','D:\Data\dnd-dm-b\db','User')
 ```
 
 ### 1. 开启跑团
@@ -134,10 +154,11 @@ dnd-dm-b/
 │   └── adr/
 │       └── 001-rpg-experience-and-code-hardening.md # 架构决策记录 (ADR 001)
 ├── references/
-│   ├── db-manifest.json              # 预编译库版本、上游提交 c1425c8 与 SHA-256 校验清单
+│   ├── db-manifest.json              # 预编译库版本、上游 40 位提交 SHA 与 SHA-256 校验清单
 │   ├── session-zero-interface.md     # 官方 Session 0 极速开局三步引导接口
-│   ├── rules.db                      # [setup-db 生成, gitignore] SQLite FTS5 规则库 (8,827 词条, 123.54 MiB)
-│   └── topics_index.json             # [setup-db 生成, gitignore] 全书双语 JSON 索引 (8,827 条目, 2.31 MiB)
+│   ├── rules.db                      # [setup-db 生成, gitignore] SQLite FTS5 规则库 (8,910 词条, 124.40 MiB)
+│   ├── topics_index.json             # [setup-db 生成, gitignore] 全书双语 JSON 索引 (8,910 条目, 2.33 MiB)
+│   └── dedup-report.json             # [setup-db 生成, gitignore] 同书去重合并审计报告
 ├── scripts/
 │   ├── setup-db.js                   # 规则库一键获取工具 (Release 下载校验 SHA-256 / 5echm_web 本地构建)
 │   ├── lookup.js                     # 核心点查引擎 (支持双语/别名/职业特性/模组分类)

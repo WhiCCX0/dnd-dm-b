@@ -164,6 +164,21 @@ export function getSessionsDir() {
   return process.env.DND_SESSIONS_DIR || process.env.SESSIONS_DIR || getDefaultUserSessionsDir();
 }
 
+export function isSessionOnSystemDrive(sessionPath, env = process.env, platform = process.platform) {
+  if (!sessionPath) return false;
+  const rawSysDrive = env.SystemDrive || (platform === 'win32' ? 'C:' : '');
+  if (!rawSysDrive) return false;
+
+  const normPath = String(sessionPath).replace(/\\/g, '/').replace(/\/+$/, '');
+  const normSys = String(rawSysDrive).replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normSys) return false;
+
+  if (/^[a-zA-Z]:$/.test(normSys)) {
+    return normPath.toUpperCase().startsWith(`${normSys.toUpperCase()}/`);
+  }
+  return normPath === normSys || normPath.startsWith(`${normSys}/`);
+}
+
 export function parseIntStrict(value, fieldName = '数值', { min = -100000000, max = 100000000 } = {}) {
   if (value === undefined || value === null || typeof value === 'boolean') {
     throw new Error(`参数 "${fieldName}" 必须是有效整数，收到: ${String(value)}`);
@@ -1986,8 +2001,13 @@ function main() {
 
     if (command === 'init') {
       const state = initSession(campaign, options);
+      const sessionPath = getSessionPath(campaign);
       console.log(`${colors.green}✓ 战役 "${campaign}" 状态初始化成功！${colors.reset}`);
-      console.log(`${colors.dim}存档路径: ${getSessionPath(campaign)}${colors.reset}\n`);
+      console.log(`${colors.dim}存档路径: ${sessionPath}${colors.reset}`);
+      if (isSessionOnSystemDrive(sessionPath)) {
+        console.log(`${colors.dim}[提示] 当前存档位于系统盘，重装系统可能丢失进度；可设置环境变量 DND_SESSIONS_DIR 将存档迁移至非系统盘（详见 README.md“便携部署”）。${colors.reset}`);
+      }
+      console.log('');
       console.log(generateHud(state, 'line', { veil: options.veil }));
     } else if (command === 'add-member') {
       const state = addPartyMember(campaign, options);

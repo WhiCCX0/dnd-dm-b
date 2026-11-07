@@ -36,9 +36,9 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_MANIFEST_PATH = path.resolve(ROOT_DIR, 'references', 'db-manifest.json');
 const DEFAULT_UPSTREAM_REPO = 'https://github.com/DND5eChm/5echm_web.git';
-const DEFAULT_UPSTREAM_COMMIT = 'c1425c8';
+const DEFAULT_UPSTREAM_COMMIT = 'c1425c8e90804766689a0db7ec416833f3fc3046';
 
-const ALLOWED_ARCHIVE_ENTRIES = new Set(['rules.db', 'topics_index.json']);
+const ALLOWED_ARCHIVE_ENTRIES = new Set(['rules.db', 'topics_index.json', 'dedup-report.json']);
 
 export function loadManifest(manifestPath = DEFAULT_MANIFEST_PATH) {
   if (fs.existsSync(manifestPath)) {
@@ -89,6 +89,7 @@ function buildTarHeader(name, size, mtimeSec = Math.floor(Date.now() / 1000)) {
 export async function packDbArchive({
   rulesDbPath = path.resolve(ROOT_DIR, 'references', 'rules.db'),
   topicsIndexPath = path.resolve(ROOT_DIR, 'references', 'topics_index.json'),
+  dedupReportPath,
   outArchivePath
 }) {
   if (!fs.existsSync(rulesDbPath)) {
@@ -97,6 +98,9 @@ export async function packDbArchive({
   if (!fs.existsSync(topicsIndexPath)) {
     throw new Error(`Missing topics_index.json at ${topicsIndexPath}`);
   }
+  const resolvedDedupPath = dedupReportPath !== undefined
+    ? dedupReportPath
+    : path.join(path.dirname(rulesDbPath), 'dedup-report.json');
 
   fs.mkdirSync(path.dirname(outArchivePath), { recursive: true });
   const tmpOut = `${outArchivePath}.${process.pid}.tmp`;
@@ -104,11 +108,14 @@ export async function packDbArchive({
   async function* tarChunks() {
     const files = [
       { name: 'topics_index.json', fullPath: topicsIndexPath },
+      ...(resolvedDedupPath && fs.existsSync(resolvedDedupPath)
+        ? [{ name: 'dedup-report.json', fullPath: resolvedDedupPath }]
+        : []),
       { name: 'rules.db', fullPath: rulesDbPath }
     ];
     for (const f of files) {
       const stat = fs.statSync(f.fullPath);
-      yield buildTarHeader(f.name, stat.size, Math.floor(stat.mtimeMs / 1000));
+      yield buildTarHeader(f.name, stat.size, 0);
       const rs = fs.createReadStream(f.fullPath);
       for await (const chunk of rs) {
         yield chunk;
@@ -247,66 +254,156 @@ export async function extractDbArchive({
   return { sha256: actualSha256, extracted };
 }
 
-function requestWithOptionalProxy(targetUrl) {
+export function shouldBypassProxy(hostname, port, noProxyRaw) {
+  const raw = noProxyRaw !== undefined
+    ? String(noProxyRaw)
+    : String(process.env.NO_PROXY || process.env.no_proxy || '');
+  if (!raw.trim()) return false;
+
+  const hostLower = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  const tokens = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  for (const token of tokens) {
+    if (token === '*') return true;
+    let tHost = token.toLowerCase();
+    let tPort = null;
+    const colonIdx = tHost.lastIndexOf(':');
+    if (colonIdx !== -1 && !tHost.includes(']')) {
+      tPort = Number(tHost.slice(colonIdx + 1));
+      tHost = tHost.slice(0, colonIdx);
+    }
+    if (tPort && Number(port) && tPort !== Number(port)) continue;
+    const bare = tHost.replace(/^\[|\]$/g, '').replace(/^\.+/, '');
+    if (!bare) continue;
+    if (hostLower === bare || hostLower.endsWith(`.${bare}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseProxyUrl(rawProxy) {
+  const trimmed = String(rawProxy || '').trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  return new URL(withScheme);
+}
+
+function makeDownloadTimeoutError(stageLabel, timeoutMs, urlStr) {
+  const secStr = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
+  return new Error(
+    `下载预编译规则库${stageLabel}超时（${secStr}）：${urlStr}；若网络受限，可手动下载压缩包后执行离线安装：node scripts/setup-db.js --from-release --url <本地压缩包路径>（详见 README.md“离线安装”）`
+  );
+}
+
+function requestWithOptionalProxy(targetUrl, options = {}) {
   const parsed = new URL(targetUrl);
-  const proxyEnv = parsed.protocol === 'https:'
-    ? (process.env.HTTPS_PROXY || process.env.https_proxy || '')
-    : (process.env.HTTP_PROXY || process.env.http_proxy || '');
+  const targetPort = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+  const connectTimeoutMs = Number(
+    options.connectTimeoutMs ?? process.env.DND_DOWNLOAD_CONNECT_TIMEOUT_MS ?? 30000
+  );
+
+  const rawProxy = options.proxyEnv !== undefined
+    ? options.proxyEnv
+    : (parsed.protocol === 'https:'
+      ? (process.env.HTTPS_PROXY || process.env.https_proxy || '')
+      : (process.env.HTTP_PROXY || process.env.http_proxy || ''));
+
+  const bypass = shouldBypassProxy(parsed.hostname, targetPort, options.noProxy);
+  const proxyUrl = (!bypass && rawProxy) ? parseProxyUrl(rawProxy) : null;
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const activeHandles = [];
+    const finishResolve = (res) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(connectTimer);
+      resolve(res);
+    };
+    const finishReject = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(connectTimer);
+      for (const h of activeHandles) {
+        try { h.destroy(); } catch (_) {}
+      }
+      reject(err);
+    };
+
+    const connectTimer = setTimeout(() => {
+      finishReject(makeDownloadTimeoutError('连接与响应', connectTimeoutMs, targetUrl));
+    }, connectTimeoutMs);
+
     const headers = { 'User-Agent': 'dnd-dm-b-setup-db/2.2.0' };
 
-    if (!proxyEnv) {
+    if (!proxyUrl) {
       const mod = parsed.protocol === 'https:' ? https : http;
-      const req = mod.get(parsed, { headers }, res => resolve(res));
-      req.on('error', reject);
+      const req = mod.get(parsed, { headers }, res => finishResolve(res));
+      activeHandles.push(req);
+      req.on('error', finishReject);
       return;
     }
 
-    const proxyUrl = new URL(proxyEnv);
+    const proxyMod = proxyUrl.protocol === 'https:' ? https : http;
+    const proxyPort = Number(proxyUrl.port) || (proxyUrl.protocol === 'https:' ? 443 : 80);
+    const proxyAuthHeader = proxyUrl.username
+      ? {
+          'Proxy-Authorization': `Basic ${Buffer.from(
+            `${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password || '')}`
+          ).toString('base64')}`
+        }
+      : {};
+
     if (parsed.protocol === 'http:') {
-      const req = http.get({
+      const req = proxyMod.get({
         host: proxyUrl.hostname,
-        port: Number(proxyUrl.port) || 80,
+        port: proxyPort,
         path: parsed.href,
-        headers: { ...headers, Host: parsed.host }
-      }, res => resolve(res));
-      req.on('error', reject);
+        headers: { ...headers, ...proxyAuthHeader, Host: parsed.host }
+      }, res => finishResolve(res));
+      activeHandles.push(req);
+      req.on('error', finishReject);
       return;
     }
 
-    const connectReq = http.request({
+    const connectReq = proxyMod.request({
       host: proxyUrl.hostname,
-      port: Number(proxyUrl.port) || 80,
+      port: proxyPort,
       method: 'CONNECT',
-      path: `${parsed.hostname}:${Number(parsed.port) || 443}`,
-      headers: { Host: `${parsed.hostname}:${Number(parsed.port) || 443}` }
+      path: `${parsed.hostname}:${targetPort}`,
+      headers: { ...proxyAuthHeader, Host: `${parsed.hostname}:${targetPort}` }
     });
+    activeHandles.push(connectReq);
     connectReq.on('connect', (connectRes, socket) => {
+      activeHandles.push(socket);
       if (connectRes.statusCode !== 200) {
         socket.destroy();
-        reject(new Error(`Proxy CONNECT failed with HTTP ${connectRes.statusCode}`));
+        finishReject(new Error(`Proxy CONNECT failed with HTTP ${connectRes.statusCode}`));
         return;
       }
       const tlsSocket = tls.connect({
         socket,
         servername: parsed.hostname
       });
+      activeHandles.push(tlsSocket);
       const req = https.get({
         hostname: parsed.hostname,
-        port: Number(parsed.port) || 443,
+        port: targetPort,
         path: `${parsed.pathname}${parsed.search}`,
         headers,
         createConnection: () => tlsSocket
-      }, res => resolve(res));
-      req.on('error', reject);
+      }, res => finishResolve(res));
+      activeHandles.push(req);
+      req.on('error', finishReject);
     });
-    connectReq.on('error', reject);
+    connectReq.on('error', finishReject);
     connectReq.end();
   });
 }
 
-export async function downloadArchive(urlStr, destPath, redirectsLeft = 5) {
+export async function downloadArchive(urlStr, destPath, redirectsLeft = 5, options = {}) {
   if (urlStr.startsWith('file://')) {
     const srcPath = fileURLToPath(urlStr);
     if (!fs.existsSync(srcPath)) {
@@ -330,7 +427,7 @@ export async function downloadArchive(urlStr, destPath, redirectsLeft = 5) {
     return;
   }
 
-  const res = await requestWithOptionalProxy(urlStr);
+  const res = await requestWithOptionalProxy(urlStr, options);
   const code = res.statusCode || 0;
 
   if ([301, 302, 303, 307, 308].includes(code) && res.headers.location) {
@@ -339,7 +436,7 @@ export async function downloadArchive(urlStr, destPath, redirectsLeft = 5) {
       throw new Error(`Too many redirects while downloading ${urlStr}`);
     }
     const nextUrl = new URL(res.headers.location, urlStr).href;
-    return downloadArchive(nextUrl, destPath, redirectsLeft - 1);
+    return downloadArchive(nextUrl, destPath, redirectsLeft - 1, options);
   }
 
   if (code !== 200) {
@@ -349,7 +446,60 @@ export async function downloadArchive(urlStr, destPath, redirectsLeft = 5) {
     throw err;
   }
 
-  await pipeline(res, fs.createWriteStream(destPath));
+  const idleTimeoutMs = Number(
+    options.idleTimeoutMs ?? process.env.DND_DOWNLOAD_IDLE_TIMEOUT_MS ?? 60000
+  );
+  const progressIntervalMs = Number(options.progressIntervalMs ?? 10000);
+  const emitProgress = typeof options.onProgress === 'function'
+    ? options.onProgress
+    : (line => console.log(line));
+
+  const totalBytes = Number(res.headers['content-length']) || 0;
+  let downloadedBytes = 0;
+  let lastBucket = 0;
+  let lastReportAt = Date.now();
+  let idleTimer = null;
+
+  const resetIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      res.destroy(makeDownloadTimeoutError('空闲读取', idleTimeoutMs, urlStr));
+    }, idleTimeoutMs);
+  };
+
+  resetIdleTimer();
+  res.on('data', (chunk) => {
+    resetIdleTimer();
+    downloadedBytes += chunk.length;
+    const now = Date.now();
+    const bucket = totalBytes > 0 ? Math.min(10, Math.floor((downloadedBytes / totalBytes) * 10)) : 0;
+    const timeDue = (now - lastReportAt) >= progressIntervalMs;
+    if ((totalBytes > 0 && bucket > lastBucket) || timeDue) {
+      if (bucket > lastBucket) lastBucket = bucket;
+      lastReportAt = now;
+      if (totalBytes > 0) {
+        const pct = Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100));
+        emitProgress(
+          `[setup-db] 下载进度: ${pct}% (${(downloadedBytes / 1048576).toFixed(2)} / ${(totalBytes / 1048576).toFixed(2)} MiB)`
+        );
+      } else {
+        emitProgress(`[setup-db] 下载进度: 已接收 ${(downloadedBytes / 1048576).toFixed(2)} MiB`);
+      }
+    }
+  });
+
+  const tmpDest = `${destPath}.${process.pid}.part`;
+  try {
+    await pipeline(res, fs.createWriteStream(tmpDest));
+    fs.renameSync(tmpDest, destPath);
+  } catch (err) {
+    if (fs.existsSync(tmpDest)) {
+      try { fs.unlinkSync(tmpDest); } catch (_) {}
+    }
+    throw err;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+  }
 }
 
 export async function setupFromRelease({
@@ -404,18 +554,20 @@ export function setupFromSource({
   try {
     if (!topicsDir) {
       tempCloneDir = fs.mkdtempSync(path.join(os.tmpdir(), '5echm-src-'));
-      console.log(`[setup-db] 正在克隆上游数据源 ${repoUrl} 并检出提交 ${commitSha} ...`);
-      const cloneRes = spawnSync('git', ['clone', '--no-checkout', repoUrl, tempCloneDir], {
-        stdio: 'inherit'
-      });
-      if (cloneRes.status !== 0) {
-        throw new Error(`git clone 失败 (exit ${cloneRes.status})`);
-      }
-      const checkoutRes = spawnSync('git', ['-C', tempCloneDir, 'checkout', commitSha], {
-        stdio: 'inherit'
-      });
-      if (checkoutRes.status !== 0) {
-        throw new Error(`git checkout ${commitSha} 失败 (exit ${checkoutRes.status})`);
+      console.log(`[setup-db] 正在按单提交浅拉取上游数据源 ${repoUrl} @ ${commitSha} ...`);
+
+      const gitSteps = [
+        { label: 'git init', args: ['-C', tempCloneDir, 'init', '-q'] },
+        { label: 'git remote add origin', args: ['-C', tempCloneDir, 'remote', 'add', 'origin', repoUrl] },
+        { label: `git fetch --depth 1 origin ${commitSha}`, args: ['-C', tempCloneDir, 'fetch', '--depth', '1', 'origin', commitSha] },
+        { label: 'git checkout FETCH_HEAD', args: ['-C', tempCloneDir, 'checkout', '-q', 'FETCH_HEAD'] }
+      ];
+
+      for (const step of gitSteps) {
+        const res = spawnSync('git', step.args, { stdio: 'inherit' });
+        if (res.status !== 0) {
+          throw new Error(`${step.label} 失败 (exit ${res.status})`);
+        }
       }
       topicsDir = path.join(tempCloneDir, 'topics');
     }
@@ -430,7 +582,8 @@ export function setupFromSource({
       RULES_SOURCE_DIR: topicsDir,
       UPSTREAM_COMMIT: commitSha,
       DND_DB_PATH: path.join(targetDir, 'rules.db'),
-      DND_INDEX_PATH: path.join(targetDir, 'topics_index.json')
+      DND_INDEX_PATH: path.join(targetDir, 'topics_index.json'),
+      DND_DEDUP_REPORT_PATH: path.join(targetDir, 'dedup-report.json')
     };
 
     console.log('[setup-db] 1/2 正在运行 build-index.js --force ...');
@@ -451,7 +604,7 @@ export function setupFromSource({
       throw new Error(`build-db.js 执行失败 (exit ${dbRes.status})`);
     }
 
-    console.log(`[setup-db] 本地构建完成！已生成 ${path.join(targetDir, 'rules.db')} 与 topics_index.json`);
+    console.log(`[setup-db] 本地构建完成！已生成 ${path.join(targetDir, 'rules.db')}、topics_index.json 与 dedup-report.json`);
   } finally {
     if (tempCloneDir) {
       fs.rmSync(tempCloneDir, { recursive: true, force: true });
@@ -507,7 +660,8 @@ async function cli() {
 
   const dbPath = path.join(targetDir, 'rules.db');
   const indexPath = path.join(targetDir, 'topics_index.json');
-  if (!isForce && fs.existsSync(dbPath) && fs.existsSync(indexPath)) {
+  const dedupReportPath = path.join(targetDir, 'dedup-report.json');
+  if (!isForce && fs.existsSync(dbPath) && fs.existsSync(indexPath) && fs.existsSync(dedupReportPath)) {
     console.log(`[setup-db] 检测到已存在 ${dbPath} (${(fs.statSync(dbPath).size / 1024 / 1024).toFixed(2)} MiB)，如需覆盖重建请加 --force。`);
     return;
   }
