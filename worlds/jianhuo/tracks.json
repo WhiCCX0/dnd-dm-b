@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "worldId": "jianhuo",
+  "description": "剑火纪元演化八线阶段刻度与跨线写死联动配置（对应卷二 history-and-eras.md 第四节）",
+  "tracks": [
+    {
+      "id": "track:war",
+      "name": "战争",
+      "kind": "track",
+      "cadence": "month",
+      "max": 5,
+      "visibility": "public",
+      "stages": [
+        "边境摩擦",
+        "全面动员",
+        "正式开战",
+        "胶着相持",
+        "终战（胜/和/溃败）",
+        "战后余波"
+      ]
+    },
+    {
+      "id": "track:succession",
+      "name": "王位更替",
+      "kind": "track",
+      "cadence": "month",
+      "max": 4,
+      "visibility": "public",
+      "stages": [
+        "老王衰颓",
+        "继承纷争浮出水面",
+        "宫廷摊牌",
+        "大局已定",
+        "新王清洗异己"
+      ]
+    },
+    {
+      "id": "track:schism",
+      "name": "教会分裂",
+      "kind": "track",
+      "cadence": "season",
+      "max": 4,
+      "visibility": "public",
+      "stages": [
+        "派系暗斗",
+        "教义争端公开化",
+        "决裂/立伪宗",
+        "成立武装圣军 或 妥协媾和",
+        "新格局"
+      ]
+    },
+    {
+      "id": "track:doctrine",
+      "name": "学院新论",
+      "kind": "track",
+      "cadence": "season",
+      "max": 3,
+      "visibility": "public",
+      "stages": [
+        "私下密传",
+        "论文公开震撼学界",
+        "学派大论战",
+        "列为异端被禁 或 编入正统正典"
+      ]
+    },
+    {
+      "id": "track:magitech",
+      "name": "魔法技术",
+      "kind": "track",
+      "cadence": "season",
+      "max": 4,
+      "visibility": "public",
+      "stages": [
+        "理论雏形",
+        "密室试验验证",
+        "小范围定制应用",
+        "商业化普及",
+        "颠覆旧行业（招致反扑）"
+      ]
+    },
+    {
+      "id": "track:migration",
+      "name": "魔兽迁徙",
+      "kind": "track",
+      "cadence": "month",
+      "max": 3,
+      "visibility": "public",
+      "stages": [
+        "异变目击",
+        "局部兽灾爆发",
+        "跨区域大迁徙",
+        "建立新领地生态 或 被联合剿灭"
+      ]
+    },
+    {
+      "id": "track:fiends",
+      "name": "魔族动向",
+      "kind": "track",
+      "cadence": "season",
+      "max": 3,
+      "visibility": "rumor",
+      "stages": [
+        "零星斥候渗透",
+        "暗桩势力布局",
+        "挑起边境事端",
+        "与周边人类割据势力媾和或开战"
+      ]
+    },
+    {
+      "id": "track:trade",
+      "name": "商路兴衰",
+      "kind": "track",
+      "cadence": "month",
+      "max": 4,
+      "visibility": "public",
+      "stages": [
+        "谣言风声",
+        "商队谨慎改道",
+        "建立新兴商路",
+        "贸易集市繁盛",
+        "被战火/劫匪扼杀（循环）"
+      ]
+    }
+  ],
+  "linkages": [
+    {
+      "id": "lnk:migration_to_war",
+      "fromClockId": "track:migration",
+      "atStage": 2,
+      "targetClockId": "track:war",
+      "delta": 1,
+      "summary": "跨区域魔兽大迁徙冲击边塞防线，迫使边境诸邦调兵增防、升级军事摩擦"
+    },
+    {
+      "id": "lnk:war_to_trade",
+      "fromClockId": "track:war",
+      "atStage": 2,
+      "targetClockId": "track:trade",
+      "delta": 1,
+      "summary": "诸邦正式开战并征用物资要道，干线商队被迫改道或陷入战火震荡"
+    },
+    {
+      "id": "lnk:magitech_to_trade",
+      "fromClockId": "track:magitech",
+      "atStage": 3,
+      "targetClockId": "track:trade",
+      "delta": 1,
+      "summary": "侏儒魔导工坊动力器械商业化普及，刺激跨海与内陆商路扩张"
+    },
+    {
+      "id": "lnk:fiends_to_war",
+      "fromClockId": "track:fiends",
+      "atStage": 2,
+      "targetClockId": "track:war",
+      "delta": 1,
+      "summary": "深渊裂隙暗桩在边境挑起流血事端，引发邻邦互相猜忌与军事对峙"
+    },
+    {
+      "id": "lnk:succession_to_schism",
+      "fromClockId": "track:succession",
+      "atStage": 2,
+      "targetClockId": "track:schism",
+      "delta": 1,
+      "summary": "王室继承危机进入宫廷摊牌，圣座同盟内部各派因加冕正统性问题争端加剧"
+    }
+  ]
+}

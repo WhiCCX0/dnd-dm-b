@@ -20,6 +20,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRng } from './roll-dice.js';
+import {
+  WORLD_SCHEMA_VERSION,
+  JIANHUO_WORLD_ID,
+  coinsToCopper,
+  formatCopper,
+  executeDualFileTx,
+  recoverPendingOp
+} from './world-contract.js';
+import { advanceWorldTimeWithTracks } from './world.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -615,11 +624,28 @@ export function defaultState(campaignName, options = {}) {
   const initialConditions = [];
   primaryChar.conditions = initialConditions;
 
+  const isDMode = String(options.mode || '').toUpperCase() === 'D';
+  const copper = isDMode
+    ? (options.copper !== undefined
+        ? parseIntStrict(options.copper, 'copper', { min: 0, max: 1000000000 })
+        : coinsToCopper({ gp: gold }))
+    : undefined;
+
   return {
+    ...(isDMode
+      ? {
+          meta: {
+            mode: 'D',
+            worldId: JIANHUO_WORLD_ID,
+            schemaVersion: WORLD_SCHEMA_VERSION
+          }
+        }
+      : {}),
     campaign: campaignName,
     character: primaryChar,
     party,
     inventory: {
+      ...(isDMode ? { copper } : {}),
       gold,
       items
     },
@@ -657,6 +683,10 @@ export function defaultState(campaignName, options = {}) {
 
 export function getState(campaignName) {
   const filePath = getSessionPath(campaignName);
+  const sessionDir = path.dirname(filePath);
+  if (fs.existsSync(path.join(sessionDir, 'pending-op.json'))) {
+    recoverPendingOp(sessionDir);
+  }
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -1160,10 +1190,7 @@ export function updateState(campaignName, updates = {}) {
   return saveState(campaignName, state);
 }
 
-export function applyRest(campaignName, restType = 'short', options = {}) {
-  const state = getState(campaignName);
-  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
-
+function mutateStateForRest(state, restType = 'short', options = {}) {
   clearEphemeralDeltas(state);
   const targetMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
 
@@ -1310,6 +1337,44 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     );
   }
 
+  state.updatedAt = new Date().toISOString();
+  return state;
+}
+
+export function applyRest(campaignName, restType = 'short', options = {}) {
+  const state = getState(campaignName);
+  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
+
+  // D 模式沙盒战役：显式识别 meta.mode === "D"，走阶段 0 双文件原子事务联动推进世界时间
+  if (state.meta?.mode === 'D') {
+    const sessionDir = path.dirname(getSessionPath(campaignName));
+    const duration = restType === 'long' ? '8h' : '1h';
+    const opId = options.opId || `rest-${restType}-${Date.now()}-${process.pid}`;
+
+    const txRes = executeDualFileTx({
+      sessionDir,
+      opId,
+      action: `rest:${restType}`,
+      mutate: (curState, curWorld) => {
+        ensurePartyStructure(curState);
+        const nextState = mutateStateForRest(curState, restType, options);
+        const timeRes = advanceWorldTimeWithTracks(curWorld, duration);
+        return {
+          nextState,
+          nextWorld: timeRes.world,
+          result: timeRes
+        };
+      },
+      _simulateCrashAfterStateWrite: Boolean(options._simulateCrashAfterStateWrite),
+      _simulateCrashBeforeUnlink: Boolean(options._simulateCrashBeforeUnlink)
+    });
+
+    ensurePartyStructure(txRes.state);
+    return txRes.state;
+  }
+
+  // 非 D 模式（A/B/C 经典模式）：完全保持原有单文件行为不变
+  mutateStateForRest(state, restType, options);
   return saveState(campaignName, state);
 }
 
@@ -1730,10 +1795,14 @@ export function generateHud(state, mode = 'line', hudOptions = {}) {
     mobsLine = `\n👾 敌方态势: [${mobList}]`;
   }
 
+  const wealthLabel = state.meta?.mode === 'D' && typeof state.inventory?.copper === 'number'
+    ? formatCopper(state.inventory.copper)
+    : `${state.inventory.gold}gp`;
+
   if (mode === 'line') {
     const partySegments = state.party.map(m => formatSingleMemberLine(state, m)).join(' ');
     return `-----------------------------------------------------------------------------------------
-📊 队伍状态: ${partySegments} | 🎒剩余金币: ${state.inventory.gold}gp | 📍${state.status.location}${mobsLine}
+📊 队伍状态: ${partySegments} | 🎒剩余金币: ${wealthLabel} | 📍${state.status.location}${mobsLine}
 -----------------------------------------------------------------------------------------`;
   }
 
@@ -1789,7 +1858,7 @@ export function generateHud(state, mode = 'line', hudOptions = {}) {
 [当前先攻者]: ${activeTurnLabel} | 战斗第 ${state.status.round || 1} 轮
 [生命状态]: 🩸 HP: ${hp.current}/${hp.max}${deltaStr}${tempStr}${bloodied} | 🛡️ 基础 AC: ${char.ac}${concStr}${dsStr}${conds}
 [法术与职业资源]: ${slotsAndResParts.join(' | ') || '无常驻充能资源'}
-[金币与物资]: 💰 ${state.inventory.gold}gp | 🎒 ${state.inventory.items.map(i => `${i.name}x${i.count}`).join(', ')}
+[金币与物资]: 💰 ${wealthLabel} | 🎒 ${state.inventory.items.map(i => `${i.name}x${i.count}`).join(', ')}
 [当前位置与目标]: 📍 ${state.status.location} | 🎯 ${state.status.quest}${companionsLine}${mobsDashboard}
 ==========================================================================================`;
 }
@@ -1822,6 +1891,7 @@ ${colors.yellow}初始化与小队选项 (init / add-member):${colors.reset}
   --hit-die <dN>        显式指定生命骰 (如: d8, d10, d12)
   --slots <1:2,2:1>     初始法术位 (环阶:数量)
   --gold <gp>           初始金币 (默认: 15)
+  --mode <D>            可选：指定 D 模式沙盒战役 (写入 meta.mode="D" 与 inventory.copper)
   --force               若战役已存在则强制覆盖
 
 ${colors.yellow}更新选项 (update):${colors.reset}
@@ -1892,6 +1962,9 @@ export function parseCliArgs(args) {
     else if (arg === '--revive') options.revive = true;
     else if (arg === '--break-concentration') options.breakConcentration = true;
     else if (arg === '--list') options.list = true;
+    else if (arg === '--mode') options.mode = requireVal(i++, '--mode');
+    else if (arg === '--copper') options.copper = requireVal(i++, '--copper');
+    else if (arg === '--op-id') options.opId = requireVal(i++, '--op-id');
     else if (arg === '--preset') options.preset = requireVal(i++, '--preset');
     else if (arg === '--who') options.who = requireVal(i++, '--who');
     else if (arg === '--name') options.name = requireVal(i++, '--name');

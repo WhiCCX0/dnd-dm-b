@@ -19,6 +19,7 @@
     "build-db": "node scripts/build-db.js",
     "roll": "node scripts/roll-dice.js",
     "state": "node scripts/state.js",
+    "world": "node scripts/world.js",
     "test": "node --test test/*.test.js"
   },
   "keywords": [

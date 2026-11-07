@@ -686,7 +686,16 @@ export function recoverPendingOp(sessionDir) {
   }
 
   if (rollbackStateRaw === null || rollbackWorldRaw === null) {
-    throw new Error(`无法安全回滚事务 ${pending.opId}：.bak 备份缺失或写前哈希不匹配`);
+    const failedTargets = [];
+    if (rollbackStateRaw === null) failedTargets.push('state.json / state.json.bak');
+    if (rollbackWorldRaw === null) failedTargets.push('world.json / world.json.bak');
+    throw new Error(
+      `无法安全回滚事务 ${pending.opId} (${pending.action || '未知操作'})：${failedTargets.join(' 与 ')} 的 .bak 备份缺失或写前哈希不匹配。\n` +
+      `【手动处理办法】:\n` +
+      `  1. 打开存档目录: ${sessionDir}\n` +
+      `  2. 对照检查 state.json（及 state.json.bak）与 world.json（及 world.json.bak）的内容（如角色 HP 与世界日历 calendar），将两边手动恢复到同一时间点的完整版本；\n` +
+      `  3. 确认 state.json 与 world.json 状态一致后，手动删除 ${pendingPath} 即可继续运行指令。`
+    );
   }
 
   writeFileAtomic(statePath, rollbackStateRaw);
