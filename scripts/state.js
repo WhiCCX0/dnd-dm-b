@@ -1619,6 +1619,14 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
     const recoveredResources = [];
     for (const m of targetMembers) {
       if (getMemberConditions(state, m).includes('死亡')) continue;
+      if (resolveCanonical2024Class(m.class) === '魔契师') {
+        for (const [lvl, slot] of Object.entries(m.spellSlots || {})) {
+          if (slot && typeof slot === 'object' && slot.max > 0 && slot.current < slot.max) {
+            slot.current = slot.max;
+            recoveredResources.push(`${m.name}-${lvl}环法术位(${slot.current}/${slot.max})`);
+          }
+        }
+      }
       for (const [resName, res] of Object.entries(m.resources || {})) {
         const rec = String(res.recovery || '').toLowerCase();
         if (rec === 'short' || rec === 'short:all') {
