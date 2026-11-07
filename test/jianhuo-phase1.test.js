@@ -626,3 +626,34 @@ test('W1.8 - 统一四段开放框架（骨架/素材/矛盾与钩子/留白问�
   );
 });
 
+test('W1.9 - 公开文件（lore/、capsule.md、mapping.md）严禁出现内档三大劫名称（冬线南移、渊喉巨脉、苍穹脱缰）', () => {
+  const publicFiles = [
+    path.join(jianhuoDir, 'capsule.md'),
+    path.join(jianhuoDir, 'mapping.md'),
+    ...REQUIRED_LORE_FILES.map(n => path.join(loreDir, n))
+  ];
+  const secretCalamities = ['冬线南移', '渊喉巨脉', '苍穹脱缰'];
+  const leaks = [];
+
+  for (const file of publicFiles) {
+    const rel = path.relative(rootDir, file);
+    const txt = fs.readFileSync(file, 'utf8');
+    for (const cal of secretCalamities) {
+      if (txt.includes(cal)) {
+        leaks.push(`${rel}: 泄露内档三大劫专名 "${cal}"`);
+      }
+    }
+  }
+  assert.deepEqual(leaks, [], `公开文件存在内档劫级名称泄露:\n${leaks.join('\n')}`);
+
+  const dossier = fs.readFileSync(path.join(jianhuoDir, 'secret', 'gm-dossier.md'), 'utf8');
+  for (const cal of secretCalamities) {
+    assert.ok(dossier.includes(cal), `secret/gm-dossier.md 必须保留内档劫级专名 "${cal}"`);
+  }
+  assert.ok(
+    dossier.includes('第九裂口') && dossier.includes('太古鸣喉') && dossier.includes('回响源头'),
+    'secret/gm-dossier.md 必须记录第九裂口（太古鸣喉）与渊喉巨脉回响源头的内档关联'
+  );
+});
+
+
