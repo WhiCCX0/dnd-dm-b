@@ -359,10 +359,15 @@ test('gate (R13) - 文档命令统一使用 node <SKILL_DIR>/scripts/xxx.js，�
     path.join(rootDir, 'resources', 'starter-adventure', 'dmg-2-miner-difficulties.md'),
     path.join(rootDir, 'resources', 'starter-adventure', 'dmg-3-winged-god.md'),
     path.join(rootDir, 'resources', 'starter-adventure', 'dmg-4-horns-of-the-beast.md'),
-    path.join(rootDir, 'resources', 'starter-adventure', 'dmg-5-boreal-ball.md')
+    path.join(rootDir, 'resources', 'starter-adventure', 'dmg-5-boreal-ball.md'),
+    path.join(rootDir, 'worlds', 'jianhuo', 'SCHEMA.md'),
+    path.join(rootDir, 'worlds', 'jianhuo', 'capsule.md'),
+    path.join(rootDir, 'worlds', 'jianhuo', 'mapping.md'),
+    path.join(rootDir, 'worlds', 'jianhuo', 'MODE.md'),
+    path.join(rootDir, 'worlds', 'jianhuo', 'start-form.md')
   ];
 
-  const bareCmdRegex = /node\s+scripts\/(?:lookup|roll-dice|state)\.js\b/;
+  const bareCmdRegex = /node\s+scripts\/(?:lookup|roll-dice|state|world)\.js\b/;
   for (const file of docTargets) {
     const rel = path.relative(rootDir, file);
     const text = fs.readFileSync(file, 'utf8');

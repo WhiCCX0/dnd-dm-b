@@ -170,14 +170,19 @@ node <SKILL_DIR>/scripts/state.js encounter-calc --party 1,1 --crs 1/4,1/4,1/4  
 - **自建角色方案**：指导玩家利用 `templates/character-sheet.md` 构筑。
 - **新手一页纸速查卡**：提供 `templates/novice-cheat-sheet.md` 供随时参考。
 
-### 第三步：冒险剧本选本
-- **自创开箱即玩模组**：《低语地窖与暗影牙痕》(The Whispering Crypt，1–2 级五感沉浸首选)
-- **DMG 2024 官方完整五部曲冒险（A 类）**（数据库含完整正文 + 配套独立 DM 速查包）：
-  - 《秽染溪泉》(Lv.1)、《矿洞惊魂》(Lv.2)、《有翼之神》(Lv.3)、《兽之角冠》(Lv.5)、《北风舞会》(Lv.7)
-  - **原文优先准则**：运行 A 类冒险时，先执行 `node <SKILL_DIR>/scripts/lookup.js module "<冒险名>"` 读原文，主持包只作辅助；二者冲突以原文为准。
-- **5e 经典长篇战役沙盒框架**（参见 `resources/starter-adventure/official-modules-guide.md`，基于不全书生物/物品附录 + 预设主线骨架）：
-  - 《凡达林的失落矿坑》(1–5 级新手王道)、《冰塔峰巨龙》(1–6 级猎龙沙盒)、《施特拉德的诅咒》(1–10 级哥特恐怖)
-- 或使用 `resources/starter-adventure/adventure-generator.md` 随机生成未知地城即刻开跑！
+### 第三步：冒险剧本选本（路线一：经典模组 / 路线二：剑火纪元沙盒）
+- **路线一：经典 D&D 模组冒险（A / B / C 类）**：
+  - **自创开箱即玩模组（B 类）**：《低语地窖与暗影牙痕》(The Whispering Crypt，1–2 级五感沉浸首选)
+  - **DMG 2024 官方完整五部曲冒险（A 类）**（数据库含完整正文 + 配套独立 DM 速查包）：
+    - 《秽染溪泉》(Lv.1)、《矿洞惊魂》(Lv.2)、《有翼之神》(Lv.3)、《兽之角冠》(Lv.5)、《北风舞会》(Lv.7)
+    - **原文优先准则**：运行 A 类冒险时，先执行 `node <SKILL_DIR>/scripts/lookup.js module "<冒险名>"` 读原文，主持包只作辅助；二者冲突以原文为准。
+  - **5e 经典长篇战役沙盒框架（C 类）**（参见 `resources/starter-adventure/official-modules-guide.md`，基于不全书生物/物品附录 + 预设主线骨架）：
+    - 《凡达林的失落矿坑》(1–5 级新手王道)、《冰塔峰巨龙》(1–6 级猎龙沙盒)、《施特拉德的诅咒》(1–10 级哥特恐怖)
+  - 或使用 `resources/starter-adventure/adventure-generator.md` 随机生成未知地城即刻开跑！
+- **路线二：原创西方奇幻《剑火纪元》开放世界沙盒（D 类，首屏回复 `D`）**：
+  - 当玩家在首屏回复 **`D`** 选择剑火纪元沙盒时，按需加载 `worlds/jianhuo/MODE.md`、`worlds/jianhuo/capsule.md` 与 `worlds/jianhuo/start-form.md`（严禁开局一次性通读 `worlds/jianhuo/lore/*.md` 全卷或 `secret/`）。
+  - 支持 **0 级凡人序章**（`--level 0`，后续通过 `node <SKILL_DIR>/scripts/state.js promote <campaign> --class "<职业>"` 完成 `0→1` 晋升）与 **1 级正式冒险者**两种起点；开局地点、区域与势力由开局表单给出（可用设定原名，也可完全自定义），通过 `node <SKILL_DIR>/scripts/world.js init <campaign>` 自动生成 3 个“患”级局部问题、转化 `★代价` 与 `◆限制`，并仅启动与开局地区相关的 3–4 条演化线。
+  - 跑团期间通过 `node <SKILL_DIR>/scripts/lookup.js lore "<关键词>" --brief` 按需检索公开设定切片（默认不读 `secret/`，仅带 `--gm` 时读取内档）。
 
 ---
 
@@ -257,7 +262,9 @@ node <SKILL_DIR>/scripts/state.js encounter-calc --party 1,1 --crs 1/4,1/4,1/4  
 
 - **状态与笔记追踪**：通过 `<SKILL_DIR>/scripts/state.js` 实时维护用户数据目录下的 `<campaign-name>/state.json`（默认位于 `%APPDATA%\dnd-dm-b\sessions` 或 `~/.local/share/dnd-dm-b/sessions`，兼容读取旧位置 `<SKILL_DIR>/sessions/` 并支持 `DND_SESSIONS_DIR` 覆盖）。
 - **战报归档**：使用 `templates/campaign-log.md` 与 `templates/campaign-summary.md` 归档阶段性剧情。
-- **断点续跑**：当玩家说“继续上次战役”时，调用 `node <SKILL_DIR>/scripts/state.js show <campaign>` 读取状态与笔记，给出 3 句话剧情回顾，无缝复跑！
+- **断点续跑与模式分流规则**：当玩家说“继续上次战役”时，**先读战役元数据**（执行 `node <SKILL_DIR>/scripts/state.js show <campaign> --json` 检查 `meta.mode`）：
+  - 若 `mode: "D"`（剑火纪元沙盒战役）：必须先加载 `worlds/jianhuo/MODE.md` 与 `worlds/jianhuo/capsule.md`，并运行 `node <SKILL_DIR>/scripts/world.js status <campaign>` 同步世界历法、时钟与账本态势；
+  - 若为经典 A/B/C 战役：直接调用 `node <SKILL_DIR>/scripts/state.js show <campaign>` 读取状态与笔记，给出 3 句话剧情回顾，无缝复跑！
 
 ---
 

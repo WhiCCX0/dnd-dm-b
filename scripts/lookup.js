@@ -58,7 +58,8 @@ export const VALID_COMMANDS = new Set([
   'module',
   'search',
   'feat',
-  'origin'
+  'origin',
+  'lore'
 ]);
 
 const useColor = Boolean(process.stdout && process.stdout.isTTY && !process.env.NO_COLOR);
@@ -93,12 +94,14 @@ ${colors.yellow}可用命令 (支持中英文、同义词与别名):${colors.res
   ${colors.green}feat${colors.reset} <名称>         2024 起源/通用/战斗风格/传奇恩惠专长 (如: 警戒, 健壮, 巨武器大师)
   ${colors.green}origin${colors.reset} <名称>       种族/物种与背景 (如: 矮人, 精灵, 侍僧, 罪犯)
   ${colors.green}module${colors.reset} <名称>       DMG 2024 范例冒险全文及 5e 官方模组附录资源 (如: 秽染溪泉, 矿坑, 施特拉德)
+  ${colors.green}lore${colors.reset} <设定词>       剑火纪元设定按需切片检索 (默认仅检索公开 lore/，加 --gm 检索 secret/)
   ${colors.green}search${colors.reset} <关键词>     全库 FTS5 Trigram 全文检索 (覆盖标题、别名与完整正文)
 
 ${colors.yellow}选项:${colors.reset}
   ${colors.cyan}--brief, --agent, -b${colors.reset}   AI Agent 紧凑数据卡模式 (保留完整骰子与机制，省略关联列表)
   ${colors.cyan}--full, -f${colors.reset}             完整长篇输出模式 (不折叠超过 300 行的长文)
   ${colors.cyan}--json, -j${colors.reset}             输出结构化 JSON 对象
+  ${colors.cyan}--gm${colors.reset}                   在 lore 命令中允许检索 worlds/jianhuo/secret/ 内档真相
 
 ${colors.yellow}高频示例:${colors.reset}
   node scripts/lookup.js monster "地精武者" --brief # AI 跑团调用：获取完整五维与动作数据卡
@@ -106,6 +109,7 @@ ${colors.yellow}高频示例:${colors.reset}
   node scripts/lookup.js spell "火球术" --brief     # 提取 2024 火球术紧凑卡 (含 8d6 与升环)
   node scripts/lookup.js item "治疗药水" --brief    # 提取 2024 治疗药水紧凑卡 (含 2d4+2 简表)
   node scripts/lookup.js module "秽染溪泉"          # 调取 DMG 2024 官方 1 级冒险全文
+  node scripts/lookup.js lore "铁锚自由同盟" --brief # 调取剑火纪元公开设定切片
 `);
 }
 
@@ -1138,13 +1142,169 @@ function queryFallback(command, query, isBrief, options = {}) {
 }
 
 /**
+ * 剑火纪元设定按需切片检索：默认仅检索公开 lore/*.md、capsule.md、mapping.md；
+ * 仅当 options.gm === true 时才检索 worlds/jianhuo/secret/*.md。
+ */
+export function queryLore(query, isBrief = false, options = {}) {
+  const qStr = String(query ?? '').trim();
+  const isGm = Boolean(options.gm);
+  const jianhuoDir = path.join(ROOT_DIR, 'worlds/jianhuo');
+  const loreDir = path.join(jianhuoDir, 'lore');
+  const secretDir = path.join(jianhuoDir, 'secret');
+
+  const candidateFiles = [];
+  if (fs.existsSync(loreDir)) {
+    for (const f of fs.readdirSync(loreDir).filter(n => n.endsWith('.md')).sort()) {
+      candidateFiles.push({
+        absPath: path.join(loreDir, f),
+        relFile: `worlds/jianhuo/lore/${f}`,
+        isPrimaryLore: true
+      });
+    }
+  }
+  for (const topDoc of ['capsule.md', 'mapping.md']) {
+    const p = path.join(jianhuoDir, topDoc);
+    if (fs.existsSync(p)) {
+      candidateFiles.push({
+        absPath: p,
+        relFile: `worlds/jianhuo/${topDoc}`,
+        isPrimaryLore: false
+      });
+    }
+  }
+  if (isGm && fs.existsSync(secretDir)) {
+    for (const f of fs.readdirSync(secretDir).filter(n => n.endsWith('.md')).sort()) {
+      candidateFiles.push({
+        absPath: path.join(secretDir, f),
+        relFile: `worlds/jianhuo/secret/${f}`,
+        isPrimaryLore: true
+      });
+    }
+  }
+
+  const sections = [];
+  let secAutoId = 900001;
+
+  for (const fileInfo of candidateFiles) {
+    const raw = fs.readFileSync(fileInfo.absPath, 'utf8');
+    const lines = raw.split(/\r?\n/);
+    let docTitle = path.basename(fileInfo.relFile, '.md');
+    let curHeading = docTitle;
+    let curLines = [];
+
+    const flushSection = () => {
+      const body = curLines.join('\n').trim();
+      if (!body) return;
+      sections.push({
+        id: secAutoId++,
+        title: curHeading,
+        relFile: fileInfo.relFile,
+        isPrimaryLore: fileInfo.isPrimaryLore,
+        content: body
+      });
+    };
+
+    for (const line of lines) {
+      const h1 = line.match(/^#\s+(.+)$/);
+      const h2 = line.match(/^##\s+(.+)$/);
+      if (h1) {
+        flushSection();
+        docTitle = h1[1].trim();
+        curHeading = docTitle;
+        curLines = [line];
+      } else if (h2) {
+        flushSection();
+        curHeading = h2[1].trim();
+        curLines = [line];
+      } else {
+        curLines.push(line);
+      }
+    }
+    flushSection();
+  }
+
+  const qLower = qStr.toLowerCase();
+  const scored = [];
+  for (const sec of sections) {
+    const titleLower = sec.title.toLowerCase();
+    const contentLower = sec.content.toLowerCase();
+    if (!titleLower.includes(qLower) && !contentLower.includes(qLower)) {
+      continue;
+    }
+
+    let score = 0;
+    if (titleLower === qLower) score += 1000;
+    else if (titleLower.includes(qLower)) score += 500;
+
+    if (sec.content.includes(`**${qStr}**`) || contentLower.includes(`**${qLower}`)) {
+      score += 300;
+    }
+
+    let idx = 0;
+    let count = 0;
+    while ((idx = contentLower.indexOf(qLower, idx)) !== -1) {
+      count += 1;
+      idx += Math.max(1, qLower.length);
+    }
+    score += 100 + Math.min(count, 20) * 10;
+    if (sec.isPrimaryLore) score += 50;
+
+    scored.push({ ...sec, score });
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.id - b.id);
+
+  if (scored.length === 0) {
+    if (options.json) {
+      return { found: false, command: 'lore', query: qStr };
+    }
+    console.log(`${colors.red}未在剑火纪元设定中找到与 "${qStr}" 匹配的切片。${colors.reset}`);
+    return false;
+  }
+
+  const best = scored[0];
+  const briefLines = best.content.split(/\r?\n/).slice(0, 18).join('\n');
+  const entry = {
+    id: best.id,
+    category: 'lore',
+    title: best.title,
+    edition: 'jianhuo',
+    file: best.relFile,
+    url: best.relFile,
+    visibility: best.relFile.includes('/secret/') ? 'secret' : 'public',
+    brief: briefLines,
+    content: isBrief ? briefLines : best.content
+  };
+  const related = scored.slice(1, 5).map(s => ({
+    id: s.id,
+    category: 'lore',
+    title: s.title,
+    file: s.relFile,
+    url: s.relFile
+  }));
+
+  if (options.json) {
+    return { found: true, entry, related };
+  }
+
+  console.log(`${colors.green}=== 找到剑火设定切片: 【${entry.title}】 ===${colors.reset}`);
+  console.log(`${colors.dim}来源: ${entry.file}${colors.reset}\n`);
+  console.log(entry.content);
+  if (!isBrief && related.length > 0) {
+    console.log(`\n${colors.cyan}关联切片:${colors.reset} ${related.map(r => `${r.title} (${r.file})`).join(' | ')}`);
+  }
+  return true;
+}
+
+/**
  * Programmatic lookup API for Agent and In-Process Tools
  */
 export function lookup(command, query, options = {}) {
   const isBrief = Boolean(options.brief || options.agent || options.b || options.stat);
   const isJson = Boolean(options.json || options.j);
   const isFull = Boolean(options.full || options.f);
-  const safeOpts = { ...options, brief: isBrief, json: isJson, full: isFull };
+  const isGm = Boolean(options.gm);
+  const safeOpts = { ...options, brief: isBrief, json: isJson, full: isFull, gm: isGm };
 
   const normalizedCmd = String(command || 'search').trim().toLowerCase();
   if (!VALID_COMMANDS.has(normalizedCmd)) {
@@ -1164,6 +1324,10 @@ export function lookup(command, query, options = {}) {
     }
     console.error(`${colors.red}错误: ${errMsg}${colors.reset}`);
     return false;
+  }
+
+  if (normalizedCmd === 'lore') {
+    return queryLore(qStr, isBrief, safeOpts);
   }
 
   const sqlRes = querySqlite(normalizedCmd, qStr, isBrief, safeOpts);
@@ -1196,6 +1360,7 @@ function cli() {
   let isBrief = false;
   let isJson = false;
   let isFull = false;
+  let isGm = false;
   const cleanArgs = [];
 
   for (const rawArg of rawArgs) {
@@ -1206,8 +1371,10 @@ function cli() {
       isFull = true;
     } else if (arg === '--json' || arg === '-j') {
       isJson = true;
+    } else if (arg === '--gm') {
+      isGm = true;
     } else if (arg.startsWith('-')) {
-      console.error(`${colors.red}错误: 未知选项参数 "${rawArg}"。可用选项: --brief (-b), --full (-f), --json (-j), --help (-h)${colors.reset}`);
+      console.error(`${colors.red}错误: 未知选项参数 "${rawArg}"。可用选项: --brief (-b), --full (-f), --json (-j), --gm, --help (-h)${colors.reset}`);
       process.exit(1);
     } else {
       cleanArgs.push(rawArg);
@@ -1233,7 +1400,7 @@ function cli() {
     process.exit(1);
   }
 
-  const result = lookup(command, query, { brief: isBrief, full: isFull, json: isJson });
+  const result = lookup(command, query, { brief: isBrief, full: isFull, json: isJson, gm: isGm });
   if (isJson) {
     console.log(JSON.stringify(result, null, 2));
   }

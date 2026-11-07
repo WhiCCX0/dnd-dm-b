@@ -477,7 +477,7 @@ test('lookup (R16) - 数据库与索引缺失时输出一行明确的 setup-db �
   }
 });
 
-test('CLI 端到端 (R12.5 & R13) - 从非技能目录运行三个核心脚本均正常执行，且输出无 ANSI 颜色码与无 SQLite 实验警告', () => {
+test('CLI 端到端 (R12.5 & R13) - 从非技能目录运行四个核心脚本均正常执行，且输出无 ANSI 颜色码与无 SQLite 实验警告', () => {
   const extCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-ext-cwd-'));
   const extSessions = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-ext-sessions-'));
   const ansiRegex = /\x1b\[[0-9;]*m/;
@@ -489,6 +489,11 @@ test('CLI 端到端 (R12.5 & R13) - 从非技能目录运行三个核心脚本�
         name: 'lookup.js',
         args: [path.join(ROOT_DIR, 'scripts', 'lookup.js'), 'monster', '地精武者', '--brief'],
         expectOut: '地精武者'
+      },
+      {
+        name: 'lookup.js lore',
+        args: [path.join(ROOT_DIR, 'scripts', 'lookup.js'), 'lore', '埃瑟加德', '--brief'],
+        expectOut: '埃瑟加德'
       },
       {
         name: 'roll-dice.js',
@@ -504,6 +509,16 @@ test('CLI 端到端 (R12.5 & R13) - 从非技能目录运行三个核心脚本�
         name: 'state.js show',
         args: [path.join(ROOT_DIR, 'scripts', 'state.js'), 'show', 'e2e-cli', '--hud', '--veil'],
         expectOut: '瓦伦·铁福德'
+      },
+      {
+        name: 'world.js init',
+        args: [path.join(ROOT_DIR, 'scripts', 'world.js'), 'init', 'e2e-world-cli', '--region', '铁锚自由同盟与万门海湾', '--location', '万门海湾外港', '--force'],
+        expectOut: '万门海湾外港'
+      },
+      {
+        name: 'world.js status',
+        args: [path.join(ROOT_DIR, 'scripts', 'world.js'), 'status', 'e2e-world-cli'],
+        expectOut: '剑火纪元世界态势'
       }
     ];
 
