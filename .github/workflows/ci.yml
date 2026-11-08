@@ -15,16 +15,25 @@ concurrency:
 
 jobs:
   test:
-    name: Node.js 24 Test Suite
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Node.js ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        node-version:
+          - '22.13'
+          - '24'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js 24
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node-version }}
 
       - name: Cache compiled rules database
         id: db-cache
@@ -34,7 +43,7 @@ jobs:
             references/rules.db
             references/topics_index.json
             references/dedup-report.json
-          key: rules-db-${{ runner.os }}-${{ hashFiles('references/db-manifest.json', 'scripts/build-index.js', 'scripts/build-db.js', 'scripts/setup-db.js') }}
+          key: rules-db-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('references/db-manifest.json', 'scripts/build-index.js', 'scripts/build-db.js', 'scripts/setup-db.js') }}
 
       - name: Prepare rules database
         run: npm run setup-db
