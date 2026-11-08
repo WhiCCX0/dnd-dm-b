@@ -4,7 +4,7 @@
  * D&D 5e 中文全规则库 (不全书 5echm) SQLite FTS5 预编译引擎构建器
  *
  * 核心功能:
- * 1. 利用 Node 24 原生 node:sqlite (零外部依赖) 构建 references/rules.db
+ * 1. 利用 Node 22.16+ 原生 node:sqlite (零外部依赖) 构建 references/rules.db
  * 2. 智能编码探测 (UTF-8 fatal 优先 -> GBK 兜底)，清洗 HTML 头部、软换行与冗余粗体标记
  * 3. 按类别定制化提取高信息密度 --brief 数据卡 (法术 100% 保留骰子算式、怪物完整五维与动作、状态/物品零空摘要)
  * 4. 建立 tokenize='trigram' 的 FTS5 全文索引与大小写无关 B-Tree 表达式索引，支持任意中文子串毫秒级检索

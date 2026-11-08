@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   initSession,
   addPartyMember,
@@ -665,7 +666,7 @@ test('state (R12.4 & R14) - 短休生命骰随机函数可注入，且存档目�
   const prevXdg = process.env.XDG_DATA_HOME;
   const tmpXdg = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-xdg-test-'));
   const tmpEnvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-env-test-'));
-  const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const legacyCampName = `__r14_legacy_probe_${process.pid}`;
   const legacyCampDir = path.join(rootDir, 'sessions', legacyCampName);
 
@@ -733,7 +734,7 @@ test('state (R12.4 & R14) - 短休生命骰随机函数可注入，且存档目�
 
 test('state (T8) - 文档含便携部署 PowerShell 说明，设置 DND_SESSIONS_DIR 写入目标目录，且位于系统盘时 init 给出迁移提示', async () => {
   const { spawnSync } = await import('node:child_process');
-  const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
   for (const docName of ['README.md', 'SKILL.md']) {
     const content = fs.readFileSync(path.join(rootDir, docName), 'utf8');

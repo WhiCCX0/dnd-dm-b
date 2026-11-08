@@ -4,7 +4,7 @@
  * D&D 5e 中文全规则库 (不全书 5echm) 极速检索工具 (SQLite FTS5 Trigram 毫秒引擎版)
  *
  * 核心升级特性:
- * 1. 原生集成 references/rules.db (Node 24 node:sqlite 驱动，零外部依赖)
+ * 1. 原生集成 references/rules.db (Node 22.16+ node:sqlite 驱动，零外部依赖)
  * 2. B-Tree 表达式索引点查与 FTS5 Trigram 全文倒排检索 (支持任意中文子串与正文 content_md 检索)
  * 3. 专为 AI Agent 打造的 --brief / --agent 紧凑模式 (保留完整骰子算式、豁免与动作，省去冗余关联列表)
  * 4. 严格遵循 D&D 2024/2025 规则文本，相关性优先于版本号排序，怪物检索优先返回数据卡而非背景设定页
@@ -15,6 +15,14 @@ import fs from 'fs';
 import { createRequire } from 'node:module';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { assertFts5Support } from './sqlite-capability.js';
+
+let fts5SupportChecked = false;
+function ensureFts5Support() {
+  if (fts5SupportChecked) return;
+  assertFts5Support();
+  fts5SupportChecked = true;
+}
 
 const _require = createRequire(import.meta.url);
 let _DatabaseSync = null;
@@ -1313,6 +1321,7 @@ export function queryLore(query, isBrief = false, options = {}) {
  * Programmatic lookup API for Agent and In-Process Tools
  */
 export function lookup(command, query, options = {}) {
+  ensureFts5Support();
   const isBrief = Boolean(options.brief || options.agent || options.b || options.stat);
   const isJson = Boolean(options.json || options.j);
   const isFull = Boolean(options.full || options.f);
@@ -1368,6 +1377,13 @@ function cli() {
   if (rawArgs.length === 0 || rawArgs.includes('--help') || rawArgs.includes('-h')) {
     printHelp();
     process.exit(0);
+  }
+
+  try {
+    ensureFts5Support();
+  } catch (error) {
+    console.error(`${colors.red}${error.message}${colors.reset}`);
+    process.exit(1);
   }
 
   let isBrief = false;

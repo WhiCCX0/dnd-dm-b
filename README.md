@@ -29,6 +29,10 @@
 
 ## 🚀 极速上手 (Quick Start)
 
+### Node.js 运行环境要求
+
+最低要求为 **Node.js 22.16.0**。CI 已对 Node 22.13.0、22.13.1、22.14.0、22.15.0、22.15.1 与 22.16.0 的内置 `node:sqlite` 执行 FTS5 虚拟表创建实测：前五个版本返回 `no such module: fts5`，22.16.0 首次成功；最新 Node 22.x（实测解析为 22.23.4）也通过。规则库构建与全文检索依赖 SQLite FTS5，因此不能使用不带 FTS5 的运行时。 `setup-db.js` 与 `lookup.js` 启动时会检查该能力，并在不支持时提示所需 Node.js 版本。
+
 > 下方所有命令中的 `<SKILL_DIR>` 指本仓库（即 `SKILL.md` 所在目录）的路径；若你的终端当前已在仓库根目录，也可将 `<SKILL_DIR>` 替换为 `.`。
 
 ### 0. 获取规则数据库（首次克隆必做，零 npm 依赖）
@@ -163,6 +167,7 @@ dnd-dm-b/
 │   └── dedup-report.json             # [setup-db 生成, gitignore] 同书去重合并审计报告
 ├── scripts/
 │   ├── setup-db.js                   # 规则库一键获取工具 (Release 下载校验 SHA-256 / 5echm_web 本地构建)
+│   ├── sqlite-capability.js          # 启动时检查原生 SQLite FTS5 能力与最低 Node.js 版本
 │   ├── lookup.js                     # 核心点查引擎 (支持双语/别名/职业特性/模组分类)
 │   ├── roll-dice.js                  # 跨平台复合骰子引擎 (支持攻击/AC/优劣势/暗骰判定/可控随机种子)
 │   ├── state.js                      # 多角色小队状态、按 ID 先攻轮转、笔记与遭遇计算引擎

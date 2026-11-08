@@ -30,6 +30,7 @@ import { pipeline } from 'node:stream/promises';
 import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
+import { assertFts5Support } from './sqlite-capability.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +40,7 @@ const DEFAULT_UPSTREAM_REPO = 'https://github.com/DND5eChm/5echm_web.git';
 const DEFAULT_UPSTREAM_COMMIT = 'c1425c8e90804766689a0db7ec416833f3fc3046';
 
 const ALLOWED_ARCHIVE_ENTRIES = new Set(['rules.db', 'topics_index.json', 'dedup-report.json']);
+const RELEASE_RETRY_DELAYS_MS = [500, 1000, 2000];
 
 export function loadManifest(manifestPath = DEFAULT_MANIFEST_PATH) {
   if (fs.existsSync(manifestPath)) {
@@ -502,6 +504,29 @@ export async function downloadArchive(urlStr, destPath, redirectsLeft = 5, optio
   }
 }
 
+async function downloadReleaseArchiveWithRetry(url, destPath) {
+  const maxAttempts = RELEASE_RETRY_DELAYS_MS.length + 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await downloadArchive(url, destPath);
+      return;
+    } catch (err) {
+      const statusCode = Number(err.statusCode);
+      const isServerError = statusCode >= 500 && statusCode <= 599;
+      if (!isServerError || attempt === maxAttempts) {
+        throw err;
+      }
+
+      const delayMs = RELEASE_RETRY_DELAYS_MS[attempt - 1];
+      console.warn(
+        `[setup-db] GitHub Release 返回 HTTP ${statusCode}，第 ${attempt}/${maxAttempts} 次下载失败，${delayMs}ms 后重试...`
+      );
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 export async function setupFromRelease({
   url,
   sha256,
@@ -523,7 +548,7 @@ export async function setupFromRelease({
   const tmpArchive = path.join(tmpDir, 'rules-bundle.tar.gz');
   try {
     console.log(`[setup-db] 正在下载预编译规则库压缩包: ${archiveUrl}`);
-    await downloadArchive(archiveUrl, tmpArchive);
+    await downloadReleaseArchiveWithRetry(archiveUrl, tmpArchive);
     console.log(`[setup-db] 正在校验 SHA-256 (${expectedSha.slice(0, 12)}...) 并解压...`);
     const result = await extractDbArchive({
       archivePath: tmpArchive,
@@ -651,6 +676,8 @@ async function cli() {
     return;
   }
 
+  assertFts5Support();
+
   const isForce = args.includes('--force') || args.includes('-f');
   const forceRelease = args.includes('--from-release');
   const forceSource = args.includes('--from-source') || args.includes('--build');
@@ -684,8 +711,7 @@ async function cli() {
     return;
   }
 
-  // Default auto mode: try Release download + SHA-256 verification first;
-  // ONLY if Release asset is not yet published (HTTP 404) or sha256 not configured, fall back to source build.
+  // Default auto mode: retry transient Release HTTP 5xx responses before falling back to a source build.
   // Never fall back if SHA-256 verification failed!
   try {
     await setupFromRelease({

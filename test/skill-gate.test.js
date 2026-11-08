@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCategory, parseWcpContent } from '../scripts/build-index.js';
 import { htmlToMarkdown, decodeHtmlEntities } from '../scripts/build-db.js';
 import { packDbArchive, setupFromRelease } from '../scripts/setup-db.js';
+import { assertFts5Support, createFts5UnsupportedError } from '../scripts/sqlite-capability.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -470,6 +471,93 @@ test('gate (R16) - rules.db 与 topics_index.json 移出 git，零 npm 依赖，
   } finally {
     fs.rmSync(tmpWork, { recursive: true, force: true });
   }
+});
+
+
+test('gate (R18) - setup-db 对 Release HTTP 5xx 有限重试，非 5xx 不重试', async () => {
+  const http = await import('node:http');
+  const tmpWork = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-r18-retry-'));
+  const srcDir = path.join(tmpWork, 'src');
+  const targetDir = path.join(tmpWork, 'out');
+  fs.mkdirSync(srcDir, { recursive: true });
+  fs.writeFileSync(path.join(srcDir, 'rules.db'), Buffer.from('SQLite format 3\0mock-db-payload'));
+  fs.writeFileSync(path.join(srcDir, 'topics_index.json'), JSON.stringify([{ id: 1, title: '重试测试' }]));
+
+  const archivePath = path.join(tmpWork, 'bundle.tar.gz');
+  const packed = await packDbArchive({
+    rulesDbPath: path.join(srcDir, 'rules.db'),
+    topicsIndexPath: path.join(srcDir, 'topics_index.json'),
+    outArchivePath: archivePath
+  });
+  const archiveBytes = fs.readFileSync(archivePath);
+  let releaseAttempts = 0;
+  let notFoundAttempts = 0;
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/not-found') {
+      notFoundAttempts++;
+      res.writeHead(404);
+      res.end('not found');
+      return;
+    }
+
+    releaseAttempts++;
+    if (releaseAttempts <= 2) {
+      res.writeHead(503);
+      res.end('temporary release failure');
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/gzip',
+      'Content-Length': String(archiveBytes.length)
+    });
+    res.end(archiveBytes);
+  });
+
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const previousNoProxy = process.env.NO_PROXY;
+  process.env.NO_PROXY = '127.0.0.1,localhost';
+
+  try {
+    await setupFromRelease({
+      url: `http://127.0.0.1:${port}/bundle.tar.gz`,
+      sha256: packed.sha256,
+      targetDir
+    });
+
+    assert.equal(releaseAttempts, 3, '前两次 HTTP 503 后应在第三次下载成功');
+    assert.equal(
+      fs.readFileSync(path.join(targetDir, 'topics_index.json'), 'utf8'),
+      JSON.stringify([{ id: 1, title: '重试测试' }])
+    );
+
+    await assert.rejects(
+      () => setupFromRelease({
+        url: `http://127.0.0.1:${port}/not-found`,
+        sha256: packed.sha256,
+        targetDir: path.join(tmpWork, 'not-found')
+      }),
+      /HTTP 404/
+    );
+    assert.equal(notFoundAttempts, 1, 'HTTP 404 不应重试');
+  } finally {
+    if (previousNoProxy !== undefined) process.env.NO_PROXY = previousNoProxy;
+    else delete process.env.NO_PROXY;
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(tmpWork, { recursive: true, force: true });
+  }
+});
+
+test('gate (R18) - 运行时版本门禁与 SQLite FTS5 能力一致', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+  assert.equal(pkg.engines.node, '>=22.16.0');
+  assert.equal(assertFts5Support(), true, '当前 CI Node.js 必须支持 SQLite FTS5');
+
+  const unsupported = createFts5UnsupportedError(new Error('no such module: fts5'));
+  assert.match(unsupported.message, /不支持 SQLite FTS5/);
+  assert.ok(unsupported.message.includes(pkg.engines.node), '不支持 FTS5 时必须提示 package.json 要求的 Node.js 版本');
 });
 
 test('gate (R17) - 布兰·铁须头衔统一为“矮人斥候”，且全仓 HP/AC/武器数值与 presets.json 一致', () => {

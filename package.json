@@ -10,7 +10,7 @@
   "type": "module",
   "main": "scripts/lookup.js",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.16.0"
   },
   "scripts": {
     "lookup": "node scripts/lookup.js",
