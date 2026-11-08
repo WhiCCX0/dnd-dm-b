@@ -1030,21 +1030,19 @@ export function manageCanon(campaignName, options = {}) {
       if (!options.gm) {
         const visibleCanon = world.canon.filter(entry => entry.visibility !== 'secret');
         const visibleCheck = checkCanonConflict(visibleCanon, candidate);
-        if (candidate.visibility === 'secret' || (checkRes.conflict && !visibleCheck.conflict)) {
-          return {
-            action: 'check',
-            candidate: projectPlayerResult(candidate),
-            conflict: true,
-            hardConflicts: [{ reason: '检测到与 GM 密档有关的定论冲突；详细信息仅供 GM 查看' }],
-            suspectedConflicts: []
-          };
-        }
+        const hiddenConflict = checkRes.conflict && !visibleCheck.conflict;
         return projectPlayerResult({
           action: 'check',
           candidate,
           conflict: checkRes.conflict,
-          hardConflicts: checkRes.hardConflicts.map(item => ({ reason: '存在定论冲突；详细原因请 GM 复核' })),
-          suspectedConflicts: checkRes.suspectedConflicts.map(item => ({ reason: '存在疑似冲突；请 GM 复核' }))
+          hardConflicts: checkRes.hardConflicts.length
+            ? [{ reason: hiddenConflict
+                ? '检测到与 GM 密档有关的定论冲突；详细信息仅供 GM 查看'
+                : '存在定论冲突；详细原因请 GM 复核' }]
+            : [],
+          suspectedConflicts: checkRes.suspectedConflicts.length
+            ? [{ reason: '存在疑似冲突；请 GM 复核' }]
+            : []
         });
       }
       return { action: 'check', candidate, ...checkRes };
@@ -1054,7 +1052,7 @@ export function manageCanon(campaignName, options = {}) {
     try {
       appendRes = appendCanonEntry(world.canon, candidate);
     } catch (error) {
-      if (!options.gm) {
+      if (!options.gm && String(error.message).startsWith('canon 定论冲突拒绝写入')) {
         throw new Error('canon 定论冲突拒绝写入；可能涉及 GM 密档或公开事实，请由 GM 复核');
       }
       throw error;
