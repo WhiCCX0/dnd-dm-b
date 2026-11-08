@@ -721,6 +721,13 @@ test('world - GM 密档投影会过滤嵌套秘密记录、NPC secret 与隐藏�
   assert.equal(projected.world.npcs.length, 1);
   assert.equal(projected.world.npcs[0].secret, undefined);
   assert.equal(projected.npc, undefined);
+
+  const prototypePayload = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"visible":"ok"}');
+  const safePayload = projectPlayerResult(prototypePayload);
+  assert.equal(Object.prototype.polluted, undefined);
+  assert.equal(Object.hasOwn(safePayload, '__proto__'), false);
+  assert.equal(Object.hasOwn(safePayload, 'constructor'), false);
+  assert.equal(safePayload.visible, 'ok');
 });
 
 test('world - status JSON 对可见事件中的嵌套 secret 字段执行递归脱敏', () => {
