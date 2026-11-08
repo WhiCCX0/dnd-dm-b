@@ -15,6 +15,7 @@ import {
 import {
   initWorld,
   getWorld,
+  saveWorld,
   formatWorldStatus,
   runWorldTime,
   manageClock,
@@ -720,6 +721,33 @@ test('world - GM 密档投影会过滤嵌套秘密记录、NPC secret 与隐藏�
   assert.equal(projected.world.npcs.length, 1);
   assert.equal(projected.world.npcs[0].secret, undefined);
   assert.equal(projected.npc, undefined);
+});
+
+test('world - status JSON 对可见事件中的嵌套 secret 字段执行递归脱敏', () => {
+  const campaign = 'world-status-nested-secret';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  const world = getWorld(campaign);
+  world.eventHistory.push({
+    id: 'evt:public-with-secret-field',
+    type: 'test',
+    recordedAt: formatTimestamp(world.calendar),
+    visibility: 'public',
+    summary: '公开事件',
+    secret: '不应进入玩家 JSON 的嵌套秘密'
+  });
+  saveWorld(campaign, world);
+
+  const result = spawnSync(process.execPath, [
+    WORLD_SCRIPT, 'status', campaign, '--json'
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.includes('不应进入玩家 JSON 的嵌套秘密'), false);
+  assert.equal(JSON.parse(result.stdout).eventHistory[0].secret, undefined);
 });
 
 test('world - 时间推进事件持久化到 eventHistory，并保留可追踪 ID 与时间', () => {
