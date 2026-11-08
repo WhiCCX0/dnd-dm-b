@@ -1586,7 +1586,7 @@ function main() {
         throw new Error(`未找到战役 "${campaign}" 的 world.json。请先运行 init。`);
       }
       if (options.json) {
-        console.log(JSON.stringify(filterPlayerVisible(world, { gm: Boolean(options.gm) }), null, 2));
+        console.log(JSON.stringify(projectPlayerResult(filterPlayerVisible(world, { gm: Boolean(options.gm) }), { gm: Boolean(options.gm) }), null, 2));
       } else {
         console.log(formatWorldStatus(world, { gm: Boolean(options.gm), campaign }));
       }
