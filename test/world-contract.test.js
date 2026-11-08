@@ -216,7 +216,7 @@ test('phase0 (数据结构与单一权威) - D 模式元数据、铜币无损换
   assert.throws(() => validateWorldDoc({
     ...validWorld,
     clocks: [{ ...validWorld.clocks[0], id: ' ' }]
-  }), /clocks\\[0\\]\\.id 必须为非空字符串/);
+  }), /clocks\[0\]\.id 必须为非空字符串/);
   assert.throws(() => validateWorldDoc({
     ...validWorld,
     rng: { seed: 0x100000000, state: 1 }
