@@ -484,18 +484,43 @@ export function validateWorldDoc(worldDoc) {
     if (!event || typeof event !== 'object' || typeof event.id !== 'string' || !event.id.trim()) {
       throw new Error(`world.json.eventHistory[${index}] 必须包含非空字符串 id`);
     }
-    if (event.recordedAt !== undefined) toTotalHours(event.recordedAt);
-    if (event.visibility !== undefined) validateVisibility(event.visibility, `event(${event.id})`);
+    if (typeof event.type !== 'string' || !event.type.trim()) {
+      throw new Error(`world.json.eventHistory[${index}].type 必须为非空字符串`);
+    }
+    if (typeof event.recordedAt !== 'string' || !event.recordedAt.trim()) {
+      throw new Error(`world.json.eventHistory[${index}].recordedAt 必须为时间戳字符串`);
+    }
+    toTotalHours(event.recordedAt);
+    validateVisibility(event.visibility, `event(${event.id})`);
   }
 
   for (const loc of worldDoc.locations) {
+    if (typeof loc.name !== 'string' || !loc.name.trim()) {
+      throw new Error(`location "${loc.id}" 的 name 必须为非空字符串`);
+    }
     if (!TIER_LEVELS.includes(loc.tier)) {
       throw new Error(`location "${loc.id}" 的认知层级 tier 非法: ${loc.tier}`);
+    }
+    if (loc.region !== undefined && typeof loc.region !== 'string') {
+      throw new Error(`location "${loc.id}" 的 region 必须为字符串`);
     }
     validateVisibility(loc.visibility, `location(${loc.id})`);
   }
 
+  for (const faction of worldDoc.factions) {
+    if (typeof faction.name !== 'string' || !faction.name.trim()) {
+      throw new Error(`faction "${faction.id}" 的 name 必须为非空字符串`);
+    }
+    if (!Number.isSafeInteger(faction.attitude) || faction.attitude < -3 || faction.attitude > 3) {
+      throw new Error(`faction "${faction.id}" 的 attitude 必须在 -3..+3 之间`);
+    }
+    validateVisibility(faction.visibility, `faction(${faction.id})`);
+  }
+
   for (const npc of worldDoc.npcs) {
+    if (typeof npc.name !== 'string' || !npc.name.trim()) {
+      throw new Error(`NPC "${npc.id}" 的 name 必须为非空字符串`);
+    }
     if (!Number.isSafeInteger(npc.attitude) || npc.attitude < -3 || npc.attitude > 3) {
       throw new Error(`NPC "${npc.id}" 的 attitude 必须在 -3..+3 之间`);
     }
@@ -509,6 +534,9 @@ export function validateWorldDoc(worldDoc) {
   }
 
   for (const clk of worldDoc.clocks) {
+    if (typeof clk.name !== 'string' || !clk.name.trim()) {
+      throw new Error(`clock "${clk.id}" 的 name 必须为非空字符串`);
+    }
     if (!CLOCK_KINDS.includes(clk.kind)) {
       throw new Error(`clock "${clk.id}" 的 kind 非法: ${clk.kind}`);
     }
@@ -526,6 +554,9 @@ export function validateWorldDoc(worldDoc) {
   }
 
   for (const item of worldDoc.ledger) {
+    if (typeof item.summary !== 'string' || !item.summary.trim()) {
+      throw new Error(`ledger "${item.id}" 的 summary 必须为非空字符串`);
+    }
     if (!LEDGER_TYPES.includes(item.type)) {
       throw new Error(`ledger "${item.id}" 的 type 非法: ${item.type}`);
     }
@@ -546,6 +577,15 @@ export function validateWorldDoc(worldDoc) {
   }
 
   for (const r of worldDoc.rumors) {
+    if (typeof r.text !== 'string' || !r.text.trim()) {
+      throw new Error(`rumor "${r.id}" 的 text 必须为非空字符串`);
+    }
+    if (!TIER_LEVELS.includes(r.tier)) {
+      throw new Error(`rumor "${r.id}" 的 tier 非法: ${r.tier}`);
+    }
+    if (r.region !== undefined && typeof r.region !== 'string') {
+      throw new Error(`rumor "${r.id}" 的 region 必须为字符串`);
+    }
     validateVisibility(r.visibility, `rumor(${r.id})`);
   }
 
