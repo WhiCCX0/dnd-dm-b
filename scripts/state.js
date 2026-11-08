@@ -522,14 +522,14 @@ function parseResourceRecoveryRule(rawRule) {
   const match = raw.match(/^(short|long)(?::(all|\d+))?$/);
   if (!match) {
     if (/^(short|long)(?::|$)/.test(raw)) {
-      throw new Error(\`无效职业资源恢复规则 "\${rawRule}"；支持 short[:all|N]、long[:all|N]、never\`);
+      throw new Error(`无效职业资源恢复规则 "${rawRule}"；支持 short[:all|N]、long[:all|N]、never`);
     }
     return { cadence: 'none', amount: 0 };
   }
 
   const amount = match[2] || 'all';
   if (amount !== 'all' && !Number.isSafeInteger(Number(amount))) {
-    throw new Error(\`职业资源恢复数值超出安全整数范围: "\${rawRule}"\`);
+    throw new Error(`职业资源恢复数值超出安全整数范围: "${rawRule}"`);
   }
   return { cadence: match[1], amount: amount === 'all' ? 'all' : Number(amount) };
 }
