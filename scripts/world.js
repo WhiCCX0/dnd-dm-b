@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   WORLD_SCHEMA_VERSION,
   JIANHUO_WORLD_ID,
+  MAX_WORLD_EVENT_HISTORY,
   CADENCE_HOURS,
   TIER_LEVELS,
   LEDGER_TYPES,
@@ -60,6 +61,27 @@ const colors = {
   yellow: useColor ? '\x1b[33m' : '',
   red: useColor ? '\x1b[31m' : ''
 };
+
+/** Remove GM-only records and NPC secrets from player-facing result payloads. */
+export function projectPlayerResult(value, { gm = false } = {}) {
+  if (gm) return value;
+  const visit = (item) => {
+    if (Array.isArray(item)) {
+      return item.filter(entry => !entry || entry.visibility !== 'secret').map(visit);
+    }
+    if (!item || typeof item !== 'object') return item;
+    if (item.visibility === 'secret') return undefined;
+    const projected = {};
+    for (const [key, nested] of Object.entries(item)) {
+      // World JSON is user-editable; never copy prototype-sensitive keys into result objects.
+      if (key === 'secret' || key === '__proto__' || key === 'prototype' || key === 'constructor') continue;
+      const safe = visit(nested);
+      if (safe !== undefined) projected[key] = safe;
+    }
+    return projected;
+  };
+  return visit(value);
+}
 
 const TABLE_ALIASES = Object.freeze({
   rumors: 'rumor',
@@ -143,6 +165,14 @@ export function resolveTableGroup(tablesDoc, rawKey = 'omen') {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error(`随机表 "${resolvedKey}" 为空或缺少 entries 数组`);
   }
+  for (const [index, entry] of entries.entries()) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`随机表 "${resolvedKey}" 的 entries[${index}] 必须为对象`);
+    }
+    if (entry.visibility !== undefined && !VISIBILITY_LEVELS.includes(entry.visibility)) {
+      throw new Error(`随机表 "${resolvedKey}" 的 entries[${index}].visibility 非法: ${String(entry.visibility)}`);
+    }
+  }
   return {
     tableKey: resolvedKey,
     name: group.name || resolvedKey,
@@ -193,6 +223,7 @@ export function getWorld(campaignName) {
   }
   const raw = fs.readFileSync(worldPath, 'utf8');
   const worldDoc = JSON.parse(raw);
+  if (!Array.isArray(worldDoc.eventHistory)) worldDoc.eventHistory = [];
   validateWorldDoc(worldDoc);
   return worldDoc;
 }
@@ -258,6 +289,12 @@ export function applyTrackLinkagesForStep(worldDoc, fromClockId, beforeVal, afte
       if (completed) {
         targetClk.status = 'completed';
       }
+      const sourceClock = worldDoc.clocks.find(clock => clock.id === fromClockId);
+      const sourceVisibility = sourceClock?.visibility || 'public';
+      const targetVisibility = targetClk.visibility || 'public';
+      const visibility = VISIBILITY_LEVELS[
+        Math.max(VISIBILITY_LEVELS.indexOf(sourceVisibility), VISIBILITY_LEVELS.indexOf(targetVisibility))
+      ] || 'secret';
       linkageEvents.push({
         type: 'track_linkage',
         linkageId: rule.id,
@@ -275,7 +312,7 @@ export function applyTrackLinkagesForStep(worldDoc, fromClockId, beforeVal, afte
         max: targetClk.max,
         completed,
         summary: rule.summary,
-        visibility: targetClk.visibility
+        visibility
       });
     }
   }
@@ -335,6 +372,9 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
     }
 
     events.push({
+      id: `evt:${tickTimestamp}:${clk.id}`,
+      type: 'clock_tick',
+      recordedAt: tickTimestamp,
       clockId: clk.id,
       clockName: clk.name,
       kind: clk.kind,
@@ -351,9 +391,14 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
 
     if (clk.kind === 'track' && clk.current > before) {
       const triggered = applyTrackLinkagesForStep(nextWorld, clk.id, before, clk.current, tickTimestamp, tracksDoc);
-      for (const le of triggered) {
-        linkageEvents.push(le);
-        events.push(le);
+      for (const [linkIndex, le] of triggered.entries()) {
+        const recorded = {
+          ...le,
+          id: `evt:${tickTimestamp}:link:${clk.id}:${le.linkageId || 'link'}:${linkIndex + 1}`,
+          recordedAt: tickTimestamp
+        };
+        linkageEvents.push(recorded);
+        events.push(recorded);
       }
     }
   }
@@ -363,6 +408,10 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
   const overdueLedger = nextWorld.ledger.filter(
     item => item.status !== '了结' && item.dueAt && toTotalHours(item.dueAt) <= targetHours
   );
+  nextWorld.eventHistory = [
+    ...(nextWorld.eventHistory || []),
+    ...events
+  ].slice(-MAX_WORLD_EVENT_HISTORY);
 
   return {
     world: nextWorld,
@@ -383,11 +432,44 @@ function parseCsvList(raw) {
   return String(raw).split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
 }
 
+function nextSequentialId(records, prefix) {
+  const existing = new Set(records.map(record => record.id));
+  let sequence = records.length + 1;
+  while (existing.has(`${prefix}${sequence}`)) sequence += 1;
+  return `${prefix}${sequence}`;
+}
+
+function regionsMatch(left, right) {
+  const a = String(left || '').trim();
+  const b = String(right || '').trim();
+  return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
+}
+
+function parseBooleanOption(value, label) {
+  if (value === true || value === false) return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${label} 必须是 true 或 false，实际: "${value}"`);
+}
+
 function resolveActiveTrackIds(tracksDoc, options = {}) {
   const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
   const customActive = parseCsvList(options.activeTracks);
-  if (customActive.length >= 3 && customActive.length <= 4) {
-    return new Set(customActive);
+  if (options.activeTracks !== undefined) {
+    const uniqueValues = [...new Set(customActive)];
+    const resolvedTracks = uniqueValues.map(value =>
+      allTracks.find(track => track.id === value || track.name === value)
+    );
+    const unknown = uniqueValues.filter((value, index) => !resolvedTracks[index]);
+    if (unknown.length) {
+      throw new Error(`--active-tracks 包含未知演化线: ${unknown.join(', ')}`);
+    }
+    const uniqueTrackIds = [...new Set(resolvedTracks.map(track => track.id))];
+    if (uniqueTrackIds.length < 3 || uniqueTrackIds.length > 4) {
+      throw new Error('--active-tracks 必须指定 3 至 4 条不同的演化线');
+    }
+    return new Set(uniqueTrackIds);
   }
 
   const regionTracks = tracksDoc?.regionTracks || {};
@@ -639,7 +721,8 @@ export function defaultWorldDoc(options = {}) {
     clocks,
     ledger,
     canon,
-    rumors: []
+    rumors: [],
+    eventHistory: []
   };
 
   validateWorldDoc(worldDoc);
@@ -722,7 +805,7 @@ export function runWorldTime(campaignName, options = {}) {
 
   if (!options.advance) {
     const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
-    return {
+    return projectPlayerResult({
       advanced: false,
       calendar: view.calendar,
       timestamp: formatTimestamp(view.calendar),
@@ -731,7 +814,7 @@ export function runWorldTime(campaignName, options = {}) {
       events: [],
       linkageEvents: [],
       overdueLedger: []
-    };
+    }, { gm: Boolean(options.gm) });
   }
 
   const res = advanceWorldTimeWithTracks(world, options.advance);
@@ -742,7 +825,7 @@ export function runWorldTime(campaignName, options = {}) {
   const visibleEvents = gm ? res.events : res.events.filter(e => e.visibility !== 'secret');
   const visibleOverdue = gm ? res.overdueLedger : res.overdueLedger.filter(l => l.visibility !== 'secret');
 
-  return {
+  return projectPlayerResult({
     advanced: true,
     deltaHours: res.deltaHours,
     calendar: visibleWorld.calendar,
@@ -752,7 +835,7 @@ export function runWorldTime(campaignName, options = {}) {
     events: visibleEvents,
     linkageEvents: gm ? res.linkageEvents : res.linkageEvents.filter(e => e.visibility !== 'secret'),
     overdueLedger: visibleOverdue
-  };
+  }, { gm });
 }
 
 // ============================================================================
@@ -768,7 +851,8 @@ export function manageClock(campaignName, options = {}) {
   const linkageEvents = [];
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `clk:${Date.now()}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.clocks, 'clk:');
+    if (!id) throw new Error('时钟 ID 不得为空');
     if (world.clocks.some(c => c.id === id)) {
       throw new Error(`时钟 ID "${id}" 已存在`);
     }
@@ -784,7 +868,7 @@ export function manageClock(campaignName, options = {}) {
     const newClock = { id, name, kind, cadence, current, max, status, nextTick, visibility };
     world.clocks.push(newClock);
     saveWorld(campaignName, world);
-    return { action: 'add', clock: newClock, world, linkageEvents };
+    return projectPlayerResult({ action: 'add', clock: newClock, world, linkageEvents }, { gm: Boolean(options.gm) });
   }
 
   if (options.pause || options.resume || options.cancel || options.advance !== undefined || options.status) {
@@ -839,7 +923,7 @@ export function manageClock(campaignName, options = {}) {
     }
 
     saveWorld(campaignName, world);
-    return { action: 'update', clock: clk, world, linkageEvents };
+    return projectPlayerResult({ action: 'update', clock: clk, world, linkageEvents }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -857,7 +941,8 @@ export function manageLedger(campaignName, options = {}) {
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `led:${world.ledger.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.ledger, 'led:');
+    if (!id) throw new Error('账本 ID 不得为空');
     if (world.ledger.some(l => l.id === id)) {
       throw new Error(`账本 ID "${id}" 已存在`);
     }
@@ -893,7 +978,7 @@ export function manageLedger(campaignName, options = {}) {
     };
     world.ledger.push(entry);
     saveWorld(campaignName, world);
-    return { action: 'add', entry, world };
+    return projectPlayerResult({ action: 'add', entry, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.update) {
@@ -908,7 +993,7 @@ export function manageLedger(campaignName, options = {}) {
     if (options.overdueConsequence !== undefined) entry.overdueConsequence = options.overdueConsequence;
     if (options.visibility !== undefined) entry.visibility = options.visibility;
     saveWorld(campaignName, world);
-    return { action: 'update', entry, world };
+    return projectPlayerResult({ action: 'update', entry, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -936,12 +1021,12 @@ export function manageCanon(campaignName, options = {}) {
     }
     target.validTo = options.validTo || formatTimestamp(world.calendar);
     saveWorld(campaignName, world);
-    return { action: 'retire', entry: target, world, suspectedConflicts: [] };
+    return projectPlayerResult({ action: 'retire', entry: target, world, suspectedConflicts: [] }, { gm: Boolean(options.gm) });
   }
 
   if (options.check || options.add) {
     const candidate = {
-      id: options.id ? String(options.id).trim() : `canon:${world.canon.length + 1}`,
+      id: options.id ? String(options.id).trim() : nextSequentialId(world.canon, 'canon:'),
       entityId: String(options.entityId || options.entity || '').trim(),
       predicate: String(options.predicate || '').trim(),
       value: options.value,
@@ -952,20 +1037,47 @@ export function manageCanon(campaignName, options = {}) {
       visibility: options.visibility || 'public'
     };
 
+    if (!candidate.id) throw new Error('canon ID 不得为空');
     if (options.check) {
       const checkRes = checkCanonConflict(world.canon, candidate);
+      if (!options.gm) {
+        const visibleCanon = world.canon.filter(entry => entry.visibility !== 'secret');
+        const visibleCheck = checkCanonConflict(visibleCanon, candidate);
+        const hiddenConflict = checkRes.conflict && !visibleCheck.conflict;
+        return projectPlayerResult({
+          action: 'check',
+          candidate,
+          conflict: checkRes.conflict,
+          hardConflicts: checkRes.hardConflicts.length
+            ? [{ reason: hiddenConflict
+                ? '检测到与 GM 密档有关的定论冲突；详细信息仅供 GM 查看'
+                : '存在定论冲突；详细原因请 GM 复核' }]
+            : [],
+          suspectedConflicts: checkRes.suspectedConflicts.length
+            ? [{ reason: '存在疑似冲突；请 GM 复核' }]
+            : []
+        });
+      }
       return { action: 'check', candidate, ...checkRes };
     }
 
-    const appendRes = appendCanonEntry(world.canon, candidate);
+    let appendRes;
+    try {
+      appendRes = appendCanonEntry(world.canon, candidate);
+    } catch (error) {
+      if (!options.gm && String(error.message).startsWith('canon 定论冲突拒绝写入')) {
+        throw new Error('canon 定论冲突拒绝写入；可能涉及 GM 密档或公开事实，请由 GM 复核');
+      }
+      throw error;
+    }
     world.canon = appendRes.canon;
     saveWorld(campaignName, world);
-    return {
+    return projectPlayerResult({
       action: 'add',
       entry: candidate,
       suspectedConflicts: appendRes.suspectedConflicts,
       world
-    };
+    }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -997,16 +1109,21 @@ export function manageNpc(campaignName, options = {}) {
     world.rng = nextRng;
     const tpl = group.entries[index];
 
-    const id = options.id || `npc:gen_${world.npcs.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.npcs, 'npc:gen_');
+    if (!id) throw new Error('NPC ID 不得为空');
+    if (world.npcs.some(existing => existing.id === id)) {
+      throw new Error(`NPC ID "${id}" 已存在`);
+    }
     const npc = {
       id,
       name: options.name || tpl.name,
       voice: options.voice || tpl.voice || '沉稳简短',
       desire: options.desire || tpl.desire || '保全自身生计',
       fear: options.fear || tpl.fear || '旧账败露',
+      role: options.role || tpl.role || '居民',
       secret: options.secret || tpl.secret || '暂无深层底牌',
       attitude: options.attitude !== undefined ? Number(options.attitude) : (tpl.defaultAttitude ?? 0),
-      locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
+      locationId: options.locationId || options.location || world.locations[0]?.id || null,
       alive: true,
       visibility: options.visibility || 'public'
     };
@@ -1014,12 +1131,13 @@ export function manageNpc(campaignName, options = {}) {
     saveWorld(campaignName, world);
 
     const visibleWorld = filterPlayerVisible(world, { gm: Boolean(options.gm) });
-    const visibleNpc = visibleWorld.npcs.find(n => n.id === npc.id) || npc;
-    return { action: 'generate', npc: options.gm ? npc : visibleNpc, world };
+    const visibleNpc = visibleWorld.npcs.find(n => n.id === npc.id) || null;
+    return { action: 'generate', npc: visibleNpc, hidden: !visibleNpc, world: visibleWorld };
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `npc:${world.npcs.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.npcs, 'npc:');
+    if (!id) throw new Error('NPC ID 不得为空');
     if (world.npcs.some(n => n.id === id)) {
       throw new Error(`NPC ID "${id}" 已存在`);
     }
@@ -1029,15 +1147,16 @@ export function manageNpc(campaignName, options = {}) {
       voice: String(options.voice || '平实温和').trim(),
       desire: String(options.desire || '维持现状').trim(),
       fear: String(options.fear || '卷入争端').trim(),
+      role: String(options.role || '居民').trim(),
       secret: String(options.secret || '').trim(),
       attitude: options.attitude !== undefined ? Number(options.attitude) : 0,
-      locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
-      alive: options.alive !== undefined ? Boolean(options.alive !== 'false' && options.alive !== false) : true,
+      locationId: options.locationId || options.location || world.locations[0]?.id || null,
+      alive: options.alive !== undefined ? parseBooleanOption(options.alive, '--alive') : true,
       visibility: options.visibility || 'public'
     };
     world.npcs.push(npc);
     saveWorld(campaignName, world);
-    return { action: 'add', npc, world };
+    return projectPlayerResult({ action: 'add', npc, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.update) {
@@ -1052,6 +1171,7 @@ export function manageNpc(campaignName, options = {}) {
     if (options.voice !== undefined) patch.voice = options.voice;
     if (options.desire !== undefined) patch.desire = options.desire;
     if (options.fear !== undefined) patch.fear = options.fear;
+    if (options.role !== undefined) patch.role = options.role;
     if (options.secret !== undefined) patch.secret = options.secret;
     if (options.attitude !== undefined) patch.attitude = Number(options.attitude);
     if (options.locationId !== undefined || options.location !== undefined) {
@@ -1059,19 +1179,27 @@ export function manageNpc(campaignName, options = {}) {
     }
     if (options.visibility !== undefined) patch.visibility = options.visibility;
     if (options.alive !== undefined) {
-      patch.alive = options.alive === true || options.alive === 'true';
+      patch.alive = parseBooleanOption(options.alive, '--alive');
     }
 
     const allowLegalRevival = Boolean(options.revive);
     const wasDead = existing.alive === false;
+    if (allowLegalRevival) {
+      if (!wasDead) throw new Error(`NPC "${existing.name}" 尚未死亡，无需执行复活`);
+      if (patch.alive === false) throw new Error('--revive 不能与 --alive false 同时使用');
+      const reason = String(options.reviveReason || options.spell || '').trim();
+      if (!reason) throw new Error('合法复活必须提供 --revive-reason 或 --spell，避免生成无依据的复活记录');
+      patch.alive = true;
+    }
     const updated = updateNpcRecord(existing, patch, { allowLegalRevival });
     world.npcs[idx] = updated;
 
     // SCHEMA 5.2：合法复活已故 NPC 时，自动在 world.ledger 留存政治/宗教余波账本
     if (wasDead && updated.alive === true && allowLegalRevival) {
-      const reasonText = options.reviveReason || options.spell || 'D&D 2024 合法复活法术';
+      const reasonText = String(options.reviveReason || options.spell).trim();
+      const revivePrefix = `led:revive_${updated.id.replace(/[^a-zA-Z0-9_]/g, '_')}_`;
       world.ledger.push({
-        id: `led:revive_${updated.id.replace(/[^a-zA-Z0-9_]/g, '_')}_${world.ledger.length + 1}`,
+        id: nextSequentialId(world.ledger, revivePrefix),
         type: '余波',
         summary: `已故人物【${updated.name}】经由「${reasonText}」死而复生，引发教会、债主或相关势力的关注与震动`,
         source: 'NPC合法复活事件',
@@ -1090,7 +1218,7 @@ export function manageNpc(campaignName, options = {}) {
     }
 
     saveWorld(campaignName, world);
-    return { action: 'update', npc: updated, world };
+    return projectPlayerResult({ action: 'update', npc: updated, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -1108,7 +1236,11 @@ export function manageRumor(campaignName, options = {}) {
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `rum:${world.rumors.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.rumors, 'rum:');
+    if (!id) throw new Error('传闻 ID 不得为空');
+    if (world.rumors.some(existing => existing.id === id)) {
+      throw new Error(`传闻 ID "${id}" 已存在`);
+    }
     const tier = options.tier || '凡俗';
     if (!TIER_LEVELS.includes(tier)) {
       throw new Error(`无效传闻认知层级 "${tier}" (支持: ${TIER_LEVELS.join(', ')})`);
@@ -1117,27 +1249,27 @@ export function manageRumor(campaignName, options = {}) {
     if (!text) {
       throw new Error('新增传闻须提供 --text');
     }
+    const locationId = options.locationId || options.location || null;
+    const location = world.locations.find(loc => loc.id === locationId || loc.name === locationId);
     const rumor = {
       id,
       text,
       credibility: options.credibility || '半真半假',
       tier,
-      locationId: options.locationId || options.location || null,
+      locationId,
+      region: options.region || location?.region || world.meta?.region || null,
       visibility: options.visibility || 'rumor'
     };
     world.rumors.push(rumor);
     saveWorld(campaignName, world);
-    return { action: 'add', rumor, world };
+    return projectPlayerResult({ action: 'add', rumor, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.draw) {
     let maxTier = options.maxTier || options.tier || null;
     const locId = options.locationId || options.location;
-    if (!maxTier && locId) {
-      const loc = world.locations.find(l => l.id === locId || l.name === locId);
-      if (loc) maxTier = loc.tier;
-      else maxTier = '凡俗';
-    }
+    const location = locId ? world.locations.find(l => l.id === locId || l.name === locId) : null;
+    if (!maxTier && locId) maxTier = location?.tier || '凡俗';
     if (!maxTier) maxTier = '文明';
 
     const maxTierIdx = TIER_LEVELS.indexOf(maxTier);
@@ -1147,12 +1279,23 @@ export function manageRumor(campaignName, options = {}) {
 
     const tablesDoc = loadTablesDoc(options.tablesFile);
     const group = resolveTableGroup(tablesDoc, 'rumor');
-    const eligiblePool = group.entries.filter(e => {
+    const tierPool = group.entries.filter(e => {
       const idx = TIER_LEVELS.indexOf(e.tier || '凡俗');
       return idx !== -1 && idx <= maxTierIdx;
     });
+    const currentRegion = location?.region || world.meta?.region || null;
+    const regionalPool = currentRegion
+      ? tierPool.filter(entry => regionsMatch(entry.region, currentRegion))
+      : [];
+    const globalPool = tierPool.filter(entry => !entry.region);
+    const eligiblePool = regionalPool.length > 0
+      ? regionalPool
+      : (globalPool.length > 0 ? globalPool : (currentRegion ? [] : tierPool));
 
     if (eligiblePool.length === 0) {
+      if (currentRegion) {
+        throw new Error(`地区「${currentRegion}」在认知层级 [${maxTier}] 下没有匹配传闻或全球传闻；拒绝抽取其他地区传闻`);
+      }
       throw new Error(`当前认知层级上限 [${maxTier}] 下无可用传闻条目`);
     }
 
@@ -1163,24 +1306,34 @@ export function manageRumor(campaignName, options = {}) {
     let rumorEntry = world.rumors.find(r => r.id === picked.id);
     if (!rumorEntry) {
       rumorEntry = {
-        id: picked.id || `rum:draw_${world.rumors.length + 1}`,
+        id: picked.id || nextSequentialId(world.rumors, 'rum:draw_'),
         text: picked.text,
         credibility: picked.credibility || '半真半假',
         tier: picked.tier || '凡俗',
         locationId: locId || null,
+        region: picked.region || currentRegion || null,
         visibility: 'rumor'
       };
       world.rumors.push(rumorEntry);
     }
 
     saveWorld(campaignName, world);
-    return { action: 'draw', rumor: rumorEntry, maxTier, world };
+    return projectPlayerResult({ action: 'draw', rumor: rumorEntry, maxTier, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
   let list = view.rumors;
   if (options.tier) {
     list = list.filter(r => r.tier === options.tier);
+  }
+  const locId = options.locationId || options.location;
+  if (locId) {
+    const location = world.locations.find(loc => loc.id === locId || loc.name === locId);
+    const region = location?.region || world.meta?.region || null;
+    list = list.filter(r =>
+      r.locationId === locId || r.locationId === location?.id ||
+      (region && regionsMatch(r.region, region)) || (!r.locationId && !r.region)
+    );
   }
   return { action: 'list', rumors: list, world: view };
 }
@@ -1216,6 +1369,10 @@ export function runOracle(campaignName, options = {}) {
     throw new Error(`未找到战役 "${campaignName}" 的 world.json。`);
   }
 
+  const odds = String(options.odds || 'even').toLowerCase();
+  if (!['unlikely', 'even', 'likely'].includes(odds)) {
+    throw new Error(`无效神谕概率 odds "${options.odds}"（支持 unlikely / even / likely）`);
+  }
   const tableKey = options.table || 'omen';
   const group = resolveTableGroup(tablesDoc, tableKey);
 
@@ -1224,7 +1381,6 @@ export function runOracle(campaignName, options = {}) {
   if (options.question || !options.table) {
     const d6Res = rollD6WithRng(world.rng);
     world.rng = d6Res.nextRng;
-    const odds = String(options.odds || 'even').toLowerCase();
     let adjusted = d6Res.roll;
     if (odds === 'likely') adjusted = Math.min(6, d6Res.roll + 1);
     else if (odds === 'unlikely') adjusted = Math.max(1, d6Res.roll - 1);
@@ -1235,21 +1391,25 @@ export function runOracle(campaignName, options = {}) {
   const drawRes = drawIndexWithRng(world.rng, group.entries.length);
   world.rng = drawRes.nextRng;
   const entry = group.entries[drawRes.index];
+  const visibleEntry = projectPlayerResult(entry, { gm: Boolean(options.gm) });
+  const hiddenEntry = !visibleEntry;
 
   saveWorld(campaignName, world);
 
-  return {
+  return projectPlayerResult({
     action: 'oracle',
     question: options.question || null,
-    odds: options.odds || 'even',
+    odds,
     roll,
     answer,
     tableKey: group.tableKey,
     tableName: group.name,
-    entry,
-    omen: entry.text || entry.sign || entry.title || JSON.stringify(entry),
-    world
-  };
+    entry: hiddenEntry ? null : visibleEntry,
+    omen: hiddenEntry
+      ? '（隐藏结果）'
+      : (visibleEntry.text || visibleEntry.sign || visibleEntry.title || JSON.stringify(visibleEntry)),
+    world: filterPlayerVisible(world, { gm: Boolean(options.gm) })
+  }, { gm: Boolean(options.gm) });
 }
 
 // ============================================================================
@@ -1345,6 +1505,7 @@ export function parseWorldCliArgs(args) {
     else if (arg === '--voice') options.voice = requireVal(i++, '--voice');
     else if (arg === '--desire') options.desire = requireVal(i++, '--desire');
     else if (arg === '--fear') options.fear = requireVal(i++, '--fear');
+    else if (arg === '--role') options.role = requireVal(i++, '--role');
     else if (arg === '--secret') options.secret = requireVal(i++, '--secret');
     else if (arg === '--attitude') options.attitude = requireVal(i++, '--attitude');
     else if (arg === '--location' || arg === '--location-id') {
@@ -1425,7 +1586,7 @@ function main() {
     if (command === 'init') {
       const world = initWorld(campaign, options);
       if (options.json) {
-        console.log(JSON.stringify(world, null, 2));
+        console.log(JSON.stringify(projectPlayerResult(world, { gm: Boolean(options.gm) }), null, 2));
       } else {
         console.log(formatWorldStatus(world, { gm: Boolean(options.gm), campaign }));
       }
@@ -1435,7 +1596,7 @@ function main() {
         throw new Error(`未找到战役 "${campaign}" 的 world.json。请先运行 init。`);
       }
       if (options.json) {
-        console.log(JSON.stringify(filterPlayerVisible(world, { gm: Boolean(options.gm) }), null, 2));
+        console.log(JSON.stringify(projectPlayerResult(filterPlayerVisible(world, { gm: Boolean(options.gm) }), { gm: Boolean(options.gm) }), null, 2));
       } else {
         console.log(formatWorldStatus(world, { gm: Boolean(options.gm), campaign }));
       }
@@ -1453,29 +1614,33 @@ function main() {
         }
       }
     } else if (command === 'clock') {
-      const res = manageClock(campaign, options);
+      const res = projectPlayerResult(manageClock(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const c of res.clocks) {
           console.log(`⏱️ [${c.id}] ${c.name} (${c.kind}/${c.cadence}): ${c.current}/${c.max} [${c.status}] 下次结算:${c.nextTick}`);
         }
-      } else {
+      } else if (res.clock) {
         console.log(`✓ 时钟 [${res.clock.id}] ${res.clock.name}: ${res.clock.current}/${res.clock.max} [${res.clock.status}] (nextTick: ${res.clock.nextTick})`);
+      } else {
+        console.log('✓ 时钟已更新（该时钟属于 GM 密档）');
       }
     } else if (command === 'ledger') {
-      const res = manageLedger(campaign, options);
+      const res = projectPlayerResult(manageLedger(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const l of res.ledger) {
           console.log(`📒 [${l.id}] (${l.type}/${l.status}) ${l.summary}${l.dueAt ? ` [期限:${l.dueAt}]` : ''}`);
         }
-      } else {
+      } else if (res.entry) {
         console.log(`✓ 账本 [${res.entry.id}] (${res.entry.type}/${res.entry.status}): ${res.entry.summary}`);
+      } else {
+        console.log('✓ 账本已更新（该记录属于 GM 密档）');
       }
     } else if (command === 'canon') {
-      const res = manageCanon(campaign, options);
+      const res = projectPlayerResult(manageCanon(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'check') {
@@ -1484,36 +1649,42 @@ function main() {
         for (const c of res.canon) {
           console.log(`📜 [${c.id}] ${c.entityId}.${c.predicate} = ${c.value} (${c.status}, ${c.validFrom || '创世'} ~ ${c.validTo || '至今'})`);
         }
-      } else {
+      } else if (res.entry) {
         console.log(`✓ 世界事实 [${res.entry.id}] ${res.entry.entityId}.${res.entry.predicate} = ${res.entry.value} (${res.entry.status})`);
         for (const sc of res.suspectedConflicts || []) {
           console.log(`⚠️ 疑似冲突提示: ${sc.reason}`);
         }
+      } else {
+        console.log('✓ 世界事实已登记（该记录属于 GM 密档）');
       }
     } else if (command === 'npc') {
-      const res = manageNpc(campaign, options);
+      const res = projectPlayerResult(manageNpc(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const n of res.npcs) {
           console.log(`👤 [${n.id}] ${n.name} (${n.alive ? '存活' : '已故'}, 态度:${n.attitude}) 诉求:${n.desire}`);
         }
-      } else {
+      } else if (res.npc) {
         console.log(`✓ 人物 [${res.npc.id}] ${res.npc.name} (${res.npc.alive ? '存活' : '已故'}, 态度:${res.npc.attitude}) 声线:${res.npc.voice}`);
+      } else {
+        console.log('✓ 人物已登记（该人物属于 GM 密档）');
       }
     } else if (command === 'rumor') {
-      const res = manageRumor(campaign, options);
+      const res = projectPlayerResult(manageRumor(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const r of res.rumors) {
           console.log(`🗣️ [${r.id}] [${r.tier}/${r.credibility}] ${r.text}`);
         }
-      } else {
+      } else if (res.rumor) {
         console.log(`🗣️ [${res.rumor.id}] [${res.rumor.tier}/${res.rumor.credibility}] ${res.rumor.text}`);
+      } else {
+        console.log('🗣️ 已登记隐藏传闻（GM 密档）');
       }
     } else if (command === 'oracle') {
-      const res = runOracle(campaign, options);
+      const res = projectPlayerResult(runOracle(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else {

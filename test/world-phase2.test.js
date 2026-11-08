@@ -15,6 +15,7 @@ import {
 import {
   initWorld,
   getWorld,
+  saveWorld,
   formatWorldStatus,
   runWorldTime,
   manageClock,
@@ -22,7 +23,10 @@ import {
   manageCanon,
   manageNpc,
   manageRumor,
-  runOracle
+  runOracle,
+  projectPlayerResult,
+  resolveTableGroup,
+  applyTrackLinkagesForStep
 } from '../scripts/world.js';
 
 import {
@@ -435,6 +439,12 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     id: npc.id,
     alive: false
   });
+  assert.throws(() => manageNpc(campaign, {
+    add: true,
+    id: 'npc:bad_alive',
+    name: '布尔值输入错误',
+    alive: 'sometimes'
+  }), /--alive 必须是 true 或 false/);
   assert.equal(getWorld(campaign).npcs.find(n => n.id === npc.id).alive, false);
 
   assert.throws(
@@ -446,10 +456,14 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     /已死亡.*复活/
   );
 
+  assert.throws(() => manageNpc(campaign, {
+    update: true,
+    id: npc.id,
+    revive: true
+  }), /必须提供 --revive-reason 或 --spell/);
   const reviveRes = manageNpc(campaign, {
     update: true,
     id: npc.id,
-    alive: true,
     revive: true,
     reviveReason: '圣座高阶牧师施展死者复活'
   });
@@ -499,6 +513,335 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     ['铅灰冻雨夹杂细碎火山灰', '逆风吹来带着硫磺味的暖雾'].includes(customDraw.entry.text),
     '新增表不改代码即可通过 oracle --table 直接抽取'
   );
+
+  baseTables.tables.secret_field_test = {
+    name: '秘密字段投影测试',
+    entries: [{
+      id: 'secret-field-entry',
+      text: '玩家可见的征兆',
+      secret: 'GM 不可公开的解释'
+    }]
+  };
+  fs.writeFileSync(tmpTablesFile, JSON.stringify(baseTables, null, 2), 'utf8');
+  const playerOmen = runOracle(campaign, {
+    table: 'secret_field_test',
+    tablesFile: tmpTablesFile
+  });
+  assert.equal(playerOmen.entry.secret, undefined);
+  assert.equal(playerOmen.omen.includes('GM 不可公开的解释'), false);
+  assert.equal(JSON.stringify(playerOmen).includes('GM 不可公开的解释'), false);
+
+  const gmOmen = runOracle(campaign, {
+    table: 'secret_field_test',
+    tablesFile: tmpTablesFile,
+    gm: true
+  });
+  assert.equal(gmOmen.entry.secret, 'GM 不可公开的解释');
+});
+
+test('world - 玩家态 canon 冲突只返回存在性，不泄露 GM 密档的事实值', () => {
+  const campaign = 'world-canon-secret-conflict';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageCanon(campaign, {
+    add: true,
+    id: 'canon:secret_controller',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '密档中的黑烛内庭',
+    status: '定论',
+    visibility: 'secret',
+    gm: true
+  });
+
+  const playerCheck = manageCanon(campaign, {
+    check: true,
+    id: 'canon:public_controller',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '公开的港务行会',
+    status: '定论',
+    visibility: 'public'
+  });
+  assert.equal(playerCheck.conflict, true);
+  assert.equal(JSON.stringify(playerCheck).includes('密档中的黑烛内庭'), false);
+  assert.equal(JSON.stringify(playerCheck).includes('canon:secret_controller'), false);
+
+  const secretCandidateCheck = manageCanon(campaign, {
+    check: true,
+    id: 'canon:secret_unrelated',
+    entityId: 'loc:greyhaven',
+    predicate: '地下通道',
+    value: '通往旧王陵',
+    status: '定论',
+    visibility: 'secret'
+  });
+  assert.equal(secretCandidateCheck.conflict, false, '秘密候选本身不能被错误报告为冲突');
+  assert.equal(JSON.stringify(secretCandidateCheck).includes('通往旧王陵'), false);
+
+  assert.throws(() => manageCanon(campaign, {
+    add: true,
+    id: 'canon:public_conflict',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '另一个公开势力',
+    status: '定论',
+    visibility: 'public'
+  }), /GM 密档或公开事实/);
+});
+
+test('world - 跨线联动继承来源与目标中更严格的可见级别', () => {
+  const world = {
+    calendar: { era: '剑火纪', year: 142, month: 1, day: 1, hour: 8 },
+    clocks: [
+      { id: 'clk:secret_source', visibility: 'secret' },
+      {
+        id: 'clk:public_target',
+        name: '公开战争时钟',
+        kind: 'track',
+        cadence: 'month',
+        current: 0,
+        max: 4,
+        status: 'active',
+        nextTick: 'Y0142-M02-D01T08',
+        visibility: 'public'
+      }
+    ]
+  };
+  const events = applyTrackLinkagesForStep(
+    world,
+    'clk:secret_source',
+    0,
+    1,
+    'Y0142-M01-D01T08',
+    {
+      linkages: [{
+        id: 'lnk:secret_to_public',
+        fromClockId: 'clk:secret_source',
+        atStage: 1,
+        targetClockId: 'clk:public_target',
+        delta: 1,
+        summary: 'secret source caused a public target change'
+      }]
+    }
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].visibility, 'secret');
+});
+
+test('world - 地区传闻支持层级别名，但没有匹配或全球条目时拒绝跨地区抽取', () => {
+  const campaign = 'world-rumor-region-isolation';
+  cleanCampaign(campaign);
+  initWorld(campaign, {
+    seed: 20261108,
+    region: '灰岩十一邦',
+    location: '灰岩外城圣赎街'
+  });
+  const aliasDraw = manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    maxTier: '凡俗'
+  });
+  assert.equal(aliasDraw.rumor.id, 'rumor:greyrock_cavalry');
+
+  const customTables = path.join(TEMP_SESSIONS_DIR, 'region-isolation-tables.json');
+  fs.writeFileSync(customTables, JSON.stringify({
+    tables: {
+      rumor: {
+        name: '无匹配地区测试',
+        entries: [{
+          id: 'rum:wrong-region',
+          text: '万门海湾的黑帆舰队',
+          tier: '凡俗',
+          region: '铁锚自由同盟与万门海湾'
+        }]
+      }
+    }
+  }), 'utf8');
+  assert.throws(() => manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    tablesFile: customTables
+  }), /拒绝抽取其他地区传闻/);
+});
+
+test('world - 自定义随机表拒绝非对象条目与非法可见级别', () => {
+  assert.throws(() => resolveTableGroup({
+    tables: { malformed: { entries: [null] } }
+  }, 'malformed'), /entries\[0\] 必须为对象/);
+  assert.throws(() => resolveTableGroup({
+    tables: { malformed: { entries: [{ text: '测试', visibility: 'gm-only' }] } }
+  }, 'malformed'), /visibility 非法/);
+});
+
+test('world - NPC/传闻重复 ID 与非法神谕 odds 均被拒绝', () => {
+  const campaign = 'world-invalid-inputs';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageNpc(campaign, { add: true, id: 'npc:duplicate', name: '重复人物' });
+  assert.throws(() => manageNpc(campaign, {
+    add: true, id: 'npc:duplicate', name: '第二个重复人物'
+  }), /NPC ID .*已存在/);
+
+  manageRumor(campaign, {
+    add: true, id: 'rum:duplicate', text: '第一条重复传闻', visibility: 'public'
+  });
+  assert.throws(() => manageRumor(campaign, {
+    add: true, id: 'rum:duplicate', text: '第二条重复传闻'
+  }), /传闻 ID .*已存在/);
+
+  assert.throws(() => runOracle(campaign, {
+    question: '门后有人吗？',
+    odds: 'certain'
+  }), /无效神谕概率/);
+});
+
+test('world - 自定义 activeTracks 必须是 3 至 4 条已知且不重复的演化线', () => {
+  const campaign = 'world-active-track-validation';
+  cleanCampaign(campaign);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,track:trade,track:unknown'
+  }), /未知演化线/);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,track:trade,track:war'
+  }), /3 至 4 条不同的演化线/);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,战争,track:trade'
+  }), /3 至 4 条不同的演化线/);
+});
+
+test('world - GM 密档投影会过滤嵌套秘密记录、NPC secret 与隐藏事件', () => {
+  const projected = projectPlayerResult({
+    world: {
+      npcs: [
+        { id: 'npc:public', name: '公开人物', secret: '不应显示', visibility: 'public' },
+        { id: 'npc:hidden', name: '秘密人物', secret: '秘密', visibility: 'secret' }
+      ],
+      eventHistory: [
+        { id: 'evt:public', summary: '公开事件', visibility: 'public' },
+        { id: 'evt:hidden', summary: '隐藏事件', visibility: 'secret' }
+      ]
+    },
+    npc: { id: 'npc:hidden', name: '秘密人物', secret: '秘密', visibility: 'secret' }
+  });
+  const serialized = JSON.stringify(projected);
+  assert.equal(serialized.includes('秘密人物'), false);
+  assert.equal(serialized.includes('不应显示'), false);
+  assert.equal(serialized.includes('隐藏事件'), false);
+  assert.equal(projected.world.npcs.length, 1);
+  assert.equal(projected.world.npcs[0].secret, undefined);
+  assert.equal(projected.npc, undefined);
+
+  const prototypePayload = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"visible":"ok"}');
+  const safePayload = projectPlayerResult(prototypePayload);
+  assert.equal(Object.prototype.polluted, undefined);
+  assert.equal(Object.hasOwn(safePayload, '__proto__'), false);
+  assert.equal(Object.hasOwn(safePayload, 'constructor'), false);
+  assert.equal(safePayload.visible, 'ok');
+});
+
+test('world - status JSON 对可见事件中的嵌套 secret 字段执行递归脱敏', () => {
+  const campaign = 'world-status-nested-secret';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  const world = getWorld(campaign);
+  world.eventHistory.push({
+    id: 'evt:public-with-secret-field',
+    type: 'test',
+    recordedAt: formatTimestamp(world.calendar),
+    visibility: 'public',
+    summary: '公开事件',
+    secret: '不应进入玩家 JSON 的嵌套秘密'
+  });
+  saveWorld(campaign, world);
+
+  const result = spawnSync(process.execPath, [
+    WORLD_SCRIPT, 'status', campaign, '--json'
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.includes('不应进入玩家 JSON 的嵌套秘密'), false);
+  assert.equal(JSON.parse(result.stdout).eventHistory[0].secret, undefined);
+});
+
+test('world - 时间推进事件持久化到 eventHistory，并保留可追踪 ID 与时间', () => {
+  const campaign = 'world-event-history';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108, intensity: 'fast' });
+  const advanced = runWorldTime(campaign, { advance: '30d' });
+  const saved = getWorld(campaign);
+  assert.ok(advanced.events.length > 0, '30 天推进应触发至少一个默认演化时钟');
+  assert.equal(saved.eventHistory.length, advanced.events.length);
+  assert.ok(saved.eventHistory.every(event => event.id && event.recordedAt));
+  assert.deepEqual(saved.eventHistory, advanced.world.eventHistory);
+});
+
+test('world - 玩家 CLI 的 JSON 输出不泄露 secret NPC；GM 模式仍可读取密档', () => {
+  const campaign = 'world-secret-cli';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageNpc(campaign, {
+    add: true,
+    id: 'npc:secret_guardian',
+    name: '密档守门人',
+    role: '秘密守卫',
+    secret: '黑曜石密钥藏在圣坛之下',
+    visibility: 'secret'
+  });
+
+  const run = (extraArgs = []) => spawnSync(process.execPath, [
+    WORLD_SCRIPT, 'npc', campaign, '--list', '--json', ...extraArgs
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  const player = run();
+  assert.equal(player.status, 0, player.stderr);
+  assert.equal(player.stdout.includes('密档守门人'), false);
+  assert.equal(player.stdout.includes('黑曜石密钥'), false);
+
+  const gm = run(['--gm']);
+  assert.equal(gm.status, 0, gm.stderr);
+  assert.equal(gm.stdout.includes('密档守门人'), true);
+  assert.equal(gm.stdout.includes('黑曜石密钥'), true);
+});
+
+test('world - NPC 抽表保留模板 role，传闻优先匹配当前地区并保留地区信息', () => {
+  const campaign = 'world-region-rumors';
+  cleanCampaign(campaign);
+  initWorld(campaign, {
+    seed: 20261108,
+    region: '灰岩十一邦',
+    location: '灰岩外城圣赎街'
+  });
+  const npc = manageNpc(campaign, { generate: true }).npc;
+  assert.equal(typeof npc.role, 'string');
+  assert.ok(npc.role.length > 0);
+
+  const customTables = path.join(TEMP_SESSIONS_DIR, 'regional-rumors.json');
+  fs.writeFileSync(customTables, JSON.stringify({
+    tables: {
+      rumor: {
+        name: '地区传闻测试',
+        entries: [
+          { id: 'rum:regional', text: '灰岩圣赎街的井水变成银色', tier: '凡俗', region: '灰岩十一邦' },
+          { id: 'rum:other', text: '万门海湾出现黑帆舰队', tier: '凡俗', region: '铁锚自由同盟与万门海湾' },
+          { id: 'rum:global', text: '北方商道的粮价上涨', tier: '凡俗' }
+        ]
+      }
+    }
+  }), 'utf8');
+  const drawn = manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    tablesFile: customTables
+  });
+  assert.equal(drawn.rumor.id, 'rum:regional');
+  assert.equal(drawn.rumor.region, '灰岩十一邦');
 });
 
 test('phase2 (state.js rest 联动与模式隔离) - mode: "D" 短休/长休原子推进 world.json 时间，非 D 模式行为 100% 不变', () => {
@@ -548,6 +891,24 @@ test('phase2 (state.js rest 联动与模式隔离) - mode: "D" 短休/长休原�
   assert.equal(stateAfter.character.hp.current, 16);
   assert.equal(stateAfter.inventory.gold, 25);
   assert.deepEqual(worldAfter.calendar, worldBefore.calendar, '非 D 模式绝不能因目录存在 world.json 而推进世界时间');
+});
+
+test('state CLI - D 模式休息后明确显示世界时间与演化事件', () => {
+  const campaign = 'd-mode-rest-time-output';
+  cleanCampaign(campaign);
+  initSession(campaign, { mode: 'D', name: '科林', hp: 12 });
+  initWorld(campaign, { seed: 20261108, region: '铁锚自由同盟与万门海湾', location: '万门海湾外港' });
+
+  const result = spawnSync(process.execPath, [
+    STATE_SCRIPT, 'rest', campaign, '--short'
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /世界时间:/);
+  assert.match(result.stdout, /\+1h/);
 });
 
 test('phase2 (回滚失败人工恢复指引与 CLI 无 ANSI 门禁) - .bak 损坏时给出人能看懂的手动处理步骤，跨目录 CLI 零 ANSI', () => {

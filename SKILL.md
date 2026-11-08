@@ -125,7 +125,8 @@ node <SKILL_DIR>/scripts/state.js update <campaign> --use-resource "回气"     
 node <SKILL_DIR>/scripts/state.js update <campaign> --concentrate "祝福术"       # 追踪专注法术
 node <SKILL_DIR>/scripts/state.js show <campaign> --hud --veil                   # 导出隐藏敌方精确HP的沉浸式 HUD
 node <SKILL_DIR>/scripts/state.js rest <campaign> --short --dice 1 --con 2       # 短休投生命骰并按规则恢复短休资源
-node <SKILL_DIR>/scripts/state.js rest <campaign> --long                         # 长休恢复满血、全部生命骰与法术位
+node <SKILL_DIR>/scripts/state.js rest <campaign> --long                         # 长休恢复满血、全部生命骰与法术位及符合恢复规则的资源
+node <SKILL_DIR>/scripts/state.js time <campaign> --advance 16                   # 非 D 模式推进 16 小时游戏时间；长休完成后需等待 16 小时再开始下一次
 
 # 遭遇战怪物、先攻推进、笔记簿与难度计算器
 node <SKILL_DIR>/scripts/state.js mob-add <campaign> --name "骷髅" --hp 13 --ac 14 --count 2 --init 14

@@ -131,6 +131,7 @@ node <SKILL_DIR>/scripts/state.js update crypt-run --hp -4 --reason "狼爪" --u
 node <SKILL_DIR>/scripts/state.js update crypt-run --who "布兰" --hp -3 --reason "短弓流矢"
 node <SKILL_DIR>/scripts/state.js show crypt-run --hud --veil
 
+# 休息规则：长休完成后至少经过 16 小时游戏时间，才可开始下一次长休；非 D 模式用 time 命令推进时间，D 模式用 world.js time。
 # 遭遇战追踪、先攻回合推进、结构化笔记与难度计算
 node <SKILL_DIR>/scripts/state.js mob-add crypt-run --name "骷髅" --hp 13 --ac 14 --count 2 --init 14
 node <SKILL_DIR>/scripts/state.js next crypt-run
@@ -138,6 +139,7 @@ node <SKILL_DIR>/scripts/state.js mob-hit crypt-run --target "骷髅-1" --damage
 node <SKILL_DIR>/scripts/state.js note crypt-run --cat clue --add "石棺背面刻有马拉卡尔的血契符文"
 node <SKILL_DIR>/scripts/state.js encounter-calc --party 1,1 --crs 1/4,1/4,1/4
 node <SKILL_DIR>/scripts/state.js rest crypt-run --long
+node <SKILL_DIR>/scripts/state.js time crypt-run --advance 16  # 推进 16 小时游戏时间后，才可再次开始长休
 ```
 
 ---

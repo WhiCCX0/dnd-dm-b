@@ -17,6 +17,7 @@ import {
   advanceTurn,
   manageNotes,
   calculateEncounterDifficulty,
+  advanceSessionTime,
   parseCliArgs
 } from '../scripts/state.js';
 import { lookup } from '../scripts/lookup.js';
@@ -187,6 +188,152 @@ test('state - 巨额溢伤即死、已死亡禁疗锁、--revive 复活与 3 次
   state = getState(TEST_CAMPAIGN);
   assert.ok(!state.status.conditions.includes('稳定'));
   assert.equal(state.character.deathSaves.failures, 1);
+});
+
+test('state - 0 HP 受到伤害即使被临时 HP 完全吸收也增加死亡豁免失败', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  updateState(TEST_CAMPAIGN, { tempHp: 5 });
+  updateState(TEST_CAMPAIGN, { hp: '-3' });
+  const state = getState(TEST_CAMPAIGN);
+  assert.equal(state.character.hp.current, 0);
+  assert.equal(state.character.hp.temp, 2);
+  assert.equal(state.character.deathSaves.failures, 1);
+});
+
+test('state - 0 HP 时达到 HP 上限的单次伤害即死，即使临时 HP 吸收伤害', () => {
+  initSession(TEST_CAMPAIGN, { name: '巨额伤害测试者', hp: 12 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  updateState(TEST_CAMPAIGN, { tempHp: 20 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  const state = getState(TEST_CAMPAIGN);
+  assert.ok(state.character.conditions.includes('死亡'));
+  assert.equal(state.character.deathSaves.failures, 3);
+  assert.equal(state.character.hp.temp, 8, '临时 HP 仍按先吸收伤害的顺序扣除');
+});
+
+test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 CON，满血时不浪费生命骰', () => {
+  initSession(TEST_CAMPAIGN, { preset: 'valen' });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'short'), /没有 HP 至少为 1/);
+
+  initSession(TEST_CAMPAIGN, { preset: 'valen', force: true });
+  addEncounterMob(TEST_CAMPAIGN, { name: '守卫', hp: 10, ac: 12 });
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'short'), /不能开始休息/);
+
+  clearEncounter(TEST_CAMPAIGN);
+  initSession(TEST_CAMPAIGN, {
+    name: '瓦伦',
+    class: '战士',
+    level: 2,
+    hp: 20,
+    abilities: { str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
+    force: true
+  });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  const rested = applyRest(TEST_CAMPAIGN, 'short', { dice: 2, rng: () => 0.99 });
+  assert.equal(rested.character.hp.current, 20);
+  assert.equal(rested.character.hitDice.current, 1, '恢复满血后应停止继续消耗生命骰');
+
+  const noWaste = applyRest(TEST_CAMPAIGN, 'short', { dice: 1, rng: () => 0.99 });
+  assert.equal(noWaste.character.hp.current, 20);
+  assert.equal(noWaste.character.hitDice.current, 1, '满血时不应消耗生命骰');
+});
+
+test('state - 资源恢复规则拼写错误在建档时被拒绝', () => {
+  assert.throws(() => initSession(TEST_CAMPAIGN, {
+    name: '错误资源配置',
+    hp: 12,
+    setResource: ['错误资源:0/2:shrot:1']
+  }), /无效职业资源恢复规则/);
+});
+
+test('state - 长休只降低一层力竭，不会自动解除昏迷', () => {
+  initSession(TEST_CAMPAIGN, { name: '状态测试者', hp: 12 });
+  updateState(TEST_CAMPAIGN, { addCondition: '昏迷' });
+  updateState(TEST_CAMPAIGN, { addCondition: '力竭 2' });
+
+  const rested = applyRest(TEST_CAMPAIGN, 'long');
+  assert.ok(rested.character.conditions.includes('昏迷'), '长休不能擅自解除由法术或其他效果造成的昏迷');
+  assert.ok(rested.character.conditions.includes('力竭 1'), '长休只降低一层力竭');
+  assert.equal(rested.character.conditions.includes('力竭 2'), false);
+});
+
+test('state - 损坏的休息时间戳拒绝静默重置，累计游戏时钟溢出不写入', () => {
+  initSession(TEST_CAMPAIGN, { name: '时钟校验者', hp: 12 });
+  const filePath = getSessionPath(TEST_CAMPAIGN);
+  const corrupted = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  corrupted.clock.elapsedHours = 5;
+  corrupted.restState.lastLongRestCompletedAtHour = 6;
+  fs.writeFileSync(filePath, JSON.stringify(corrupted, null, 2), 'utf8');
+  assert.throws(() => getState(TEST_CAMPAIGN), /lastLongRestCompletedAtHour/);
+
+  // initSession 故意拒绝读取损坏的既有存档；测试应显式清理损坏 fixture，而不是绕过生产校验。
+  fs.rmSync(filePath, { force: true });
+  fs.rmSync(`${filePath}.bak`, { force: true });
+  initSession(TEST_CAMPAIGN, { name: '时钟溢出者', hp: 12 });
+  const maxed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  maxed.clock.elapsedHours = Number.MAX_SAFE_INTEGER;
+  fs.writeFileSync(filePath, JSON.stringify(maxed, null, 2), 'utf8');
+  assert.throws(() => advanceSessionTime(TEST_CAMPAIGN, 1), /安全整数范围/);
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, Number.MAX_SAFE_INTEGER);
+});
+
+test('state - clock/restState 容器损坏时拒绝静默重置', () => {
+  initSession(TEST_CAMPAIGN, { name: '时钟结构校验者', hp: 12 });
+  const filePath = getSessionPath(TEST_CAMPAIGN);
+  const original = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+  for (const [field, invalid] of [['clock', null], ['clock', []], ['clock', {}], ['restState', null], ['restState', []]]) {
+    const corrupted = structuredClone(original);
+    corrupted[field] = invalid;
+    fs.writeFileSync(filePath, JSON.stringify(corrupted, null, 2), 'utf8');
+    assert.throws(() => getState(TEST_CAMPAIGN), /时钟损坏|休息记录损坏/);
+  }
+  fs.writeFileSync(filePath, JSON.stringify(original, null, 2), 'utf8');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 0);
+});
+
+test('state - 长休按资源恢复规则结算：短休资源全恢复、长休定量资源递增、非休息资源不变', () => {
+  initSession(TEST_CAMPAIGN, {
+    name: '资源测试者',
+    class: '战士',
+    hp: 12,
+    setResource: [
+      '短休资源:0/3:short:1',
+      '长休定量资源:0/3:long:1',
+      '长休全恢复资源:0/3:long:all',
+      '不恢复资源:0/3:never'
+    ]
+  });
+
+  applyRest(TEST_CAMPAIGN, 'long');
+  const resources = getState(TEST_CAMPAIGN).character.resources;
+  assert.equal(resources['短休资源'].current, 3, '长休也应恢复短休资源');
+  assert.equal(resources['长休定量资源'].current, 1, 'long:1 只恢复 1 点');
+  assert.equal(resources['长休全恢复资源'].current, 3, 'long:all 恢复至上限');
+  assert.equal(resources['不恢复资源'].current, 0, '未知/非休息恢复规则不得被强行重置');
+});
+
+test('state - 非 D 模式累计游戏时钟执行 16 小时长休间隔', () => {
+  initSession(TEST_CAMPAIGN, { hp: 12 });
+  applyRest(TEST_CAMPAIGN, 'long');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 8);
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'long'), /至少等待 16 小时/);
+  advanceSessionTime(TEST_CAMPAIGN, 16);
+  applyRest(TEST_CAMPAIGN, 'long');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 32);
+});
+
+test('state - 预制角色的技能、豁免、攻击和背景数据进入唯一权威存档', () => {
+  const state = initSession(TEST_CAMPAIGN, { preset: 'valen' });
+  const character = state.character;
+  assert.equal(character.background, '士兵 (Soldier)');
+  assert.equal(character.proficiencyBonus, 2);
+  assert.deepEqual(character.savingThrowProficiencies, ['str', 'con']);
+  assert.ok(character.skills['运动']);
+  assert.equal(character.attacks[0].name, '巨剑');
+  assert.ok(character.startingEquipment.includes('链甲'));
 });
 
 test('state - 法术专注受击体质豁免 DC 提示与昏迷自动断专注 (Stage 3.2)', () => {

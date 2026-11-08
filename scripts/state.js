@@ -25,6 +25,8 @@ import {
   JIANHUO_WORLD_ID,
   coinsToCopper,
   formatCopper,
+  formatTimestamp,
+  toTotalHours,
   executeDualFileTx,
   recoverPendingOp
 } from './world-contract.js';
@@ -511,6 +513,44 @@ function parseSlots(str) {
   return res;
 }
 
+function parseResourceRecoveryRule(rawRule) {
+  const raw = String(rawRule || 'long:all').trim().toLowerCase();
+  if (['never', 'none', 'special'].includes(raw)) {
+    return { cadence: 'none', amount: 0 };
+  }
+
+  const match = raw.match(/^(short|long)(?::(all|\d+))?$/);
+  if (!match) {
+    throw new Error(`无效职业资源恢复规则 "${rawRule}"；支持 short[:all|N]、long[:all|N]、never`);
+  }
+
+  const amount = match[2] || 'all';
+  if (amount !== 'all' && !Number.isSafeInteger(Number(amount))) {
+    throw new Error(`职业资源恢复数值超出安全整数范围: "${rawRule}"`);
+  }
+  return { cadence: match[1], amount: amount === 'all' ? 'all' : Number(amount) };
+}
+
+function getResourceCurrentAfterRest(resource, restType) {
+  if (!resource || typeof resource !== 'object') return undefined;
+  const current = resource.current;
+  const max = resource.max;
+  if (!Number.isSafeInteger(current) || !Number.isSafeInteger(max) || current < 0 || max < current) {
+    throw new Error('职业资源状态非法：current/max 必须为非负整数且 current 不得超过 max');
+  }
+
+  const { cadence, amount } = parseResourceRecoveryRule(resource.recovery);
+  if (restType === 'short') {
+    if (cadence !== 'short') return current;
+    return amount === 'all' ? max : Math.min(max, current + amount);
+  }
+  if (restType === 'long') {
+    if (cadence === 'short' || (cadence === 'long' && amount === 'all')) return max;
+    if (cadence === 'long') return Math.min(max, current + amount);
+  }
+  return current;
+}
+
 function parseResourceSpec(specStr) {
   // Format: "名称:当前/上限[:恢复规则]" or "名称:上限[:恢复规则]"
   // e.g. "回气:2/2:short:1" or "引导神力:2/2:short:1" or "圣疗池:5:long:all"
@@ -524,6 +564,7 @@ function parseResourceSpec(specStr) {
   const secondColon = rest.indexOf(':');
   const countPart = secondColon === -1 ? rest : rest.slice(0, secondColon).trim();
   const recovery = secondColon === -1 ? 'long:all' : rest.slice(secondColon + 1).trim();
+  parseResourceRecoveryRule(recovery);
 
   let current;
   let max;
@@ -593,6 +634,44 @@ function ensurePartyStructure(state) {
       if (!Array.isArray(m.conditions)) m.conditions = [];
       if (m.concentration === undefined) m.concentration = null;
       if (m.initiative === undefined) m.initiative = null;
+    }
+  }
+
+  if (state.clock === undefined) {
+    // 兼容引入累计游戏时钟之前的旧存档。
+    state.clock = { elapsedHours: 0 };
+  } else if (!state.clock || typeof state.clock !== 'object' || Array.isArray(state.clock)) {
+    throw new Error('战役游戏时钟损坏：clock 必须为对象；拒绝静默重置以免绕过休息间隔');
+  } else if (!Number.isSafeInteger(state.clock.elapsedHours) || state.clock.elapsedHours < 0) {
+    throw new Error('战役游戏时钟损坏：clock.elapsedHours 必须是非负安全整数；拒绝静默重置以免绕过休息间隔');
+  }
+
+  if (state.restState === undefined) {
+    state.restState = { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null };
+  } else if (!state.restState || typeof state.restState !== 'object' || Array.isArray(state.restState)) {
+    throw new Error('战役休息记录损坏：restState 必须为对象；拒绝静默重置以免绕过休息间隔');
+  } else {
+    if (state.restState.lastLongRestCompletedAtHour === undefined) {
+      state.restState.lastLongRestCompletedAtHour = null;
+    }
+    if (state.restState.lastLongRestCompletedAt === undefined) {
+      state.restState.lastLongRestCompletedAt = null;
+    }
+    const lastCompletedHour = state.restState.lastLongRestCompletedAtHour;
+    if (lastCompletedHour !== null &&
+      (!Number.isSafeInteger(lastCompletedHour) || lastCompletedHour < 0 || lastCompletedHour > state.clock.elapsedHours)) {
+      throw new Error('战役休息记录损坏：lastLongRestCompletedAtHour 必须是不晚于当前游戏时钟的非负安全整数');
+    }
+    const lastCompletedAt = state.restState.lastLongRestCompletedAt;
+    if (lastCompletedAt !== null) {
+      if (typeof lastCompletedAt !== 'string') {
+        throw new Error('战役休息记录损坏：lastLongRestCompletedAt 必须为时间戳字符串');
+      }
+      try {
+        toTotalHours(lastCompletedAt);
+      } catch (error) {
+        throw new Error(`战役休息记录损坏：lastLongRestCompletedAt 无法解析（${error.message}）`);
+      }
     }
   }
 
@@ -816,8 +895,30 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
     ? (options.inspiration === true || options.inspiration === 'true' || options.inspiration === 1 || options.inspiration === '1')
     : (isLevel0 ? true : Boolean(preset?.heroicInspiration));
 
+  const persistedPresetData = {};
+  if (preset) {
+    const fields = [
+      'background', 'subclassPlan', 'proficiencyBonus', 'saveProficiencies',
+      'skills', 'attacks', 'initiativeBonus', 'isSidekick', 'hpBonus',
+      'hpBonusSource', 'weaponProficiencies', 'armorProficiencies',
+      'toolProficiencies', 'feats', 'speciesTraits', 'classFeatures',
+      'spellsKnown', 'spellsPrepared', 'spellcastingAbility', 'languages',
+      'senses'
+    ];
+    for (const field of fields) {
+      if (preset[field] !== undefined) persistedPresetData[field] = structuredClone(preset[field]);
+    }
+    if (preset.saveProficiencies !== undefined) {
+      persistedPresetData.savingThrowProficiencies = structuredClone(preset.saveProficiencies);
+    }
+    if (Array.isArray(preset.inventory)) {
+      persistedPresetData.startingEquipment = structuredClone(preset.inventory);
+    }
+  }
+
   return {
     character: {
+      ...persistedPresetData,
       id: charId,
       name: charName,
       class: charClass,
@@ -940,6 +1041,8 @@ export function defaultState(campaignName, options = {}) {
         mobs: []
       }
     },
+    clock: { elapsedHours: 0 },
+    restState: { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null },
     notes: {
       npc: [],
       location: [],
@@ -1135,7 +1238,7 @@ export function updateState(campaignName, updates = {}) {
 
         // Check Massive Damage Instant Death (when dropping from >0 HP and remaining overflow >= maxHp)
         const overflowDamage = prevHp > 0 ? Math.max(0, unabsorbed - prevHp) : unabsorbed;
-        if (hp.current === 0 && overflowDamage >= hp.max) {
+        if (prevHp > 0 && hp.current === 0 && overflowDamage >= hp.max) {
           member.deathSaves.failures = 3;
           if (!conditions.includes('死亡')) {
             conditions.push('死亡');
@@ -1143,22 +1246,29 @@ export function updateState(campaignName, updates = {}) {
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) conditions.splice(sIdx, 1);
           logs.push(`${whoPrefix}承受巨额溢伤 (${overflowDamage} >= HP上限 ${hp.max})，角色当场【死亡】！`);
-        } else if (prevHp === 0 && unabsorbed > 0) {
-          // 0 HP taking damage removes Stable and triggers Death Save failure(s)
+        } else if (prevHp === 0 && damage > 0 && !conditions.includes('死亡')) {
+          // At 0 HP, raw damage at least equal to max HP causes instant death,
+          // even when temporary HP absorbs the damage.
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) {
             conditions.splice(sIdx, 1);
             logs.push(`${whoPrefix}在稳定状态下受击，脱离【稳定】状态`);
           }
-          const failAdded = updates.crit ? 2 : 1;
-          member.deathSaves.failures = Math.min(3, member.deathSaves.failures + failAdded);
-          logs.push(`${whoPrefix}0 HP 状态下受击，死亡豁免失败 +${failAdded} (累计失败: ${member.deathSaves.failures}/3)`);
-          if (member.deathSaves.failures >= 3) {
+          if (damage >= hp.max) {
             member.deathSaves.failures = 3;
-            if (!conditions.includes('死亡')) {
-              conditions.push('死亡');
+            conditions.push('死亡');
+            logs.push(`${whoPrefix}在 0 HP 时承受 ${damage} 点伤害（达到 HP 上限 ${hp.max}），当场【死亡】！`);
+          } else {
+            const failAdded = updates.crit ? 2 : 1;
+            member.deathSaves.failures = Math.min(3, member.deathSaves.failures + failAdded);
+            logs.push(`${whoPrefix}0 HP 状态下受击，死亡豁免失败 +${failAdded} (累计失败: ${member.deathSaves.failures}/3)`);
+            if (member.deathSaves.failures >= 3) {
+              member.deathSaves.failures = 3;
+              if (!conditions.includes('死亡')) {
+                conditions.push('死亡');
+              }
+              logs.push(`${whoPrefix}死亡豁免累计 3 次失败，角色【死亡】！`);
             }
-            logs.push(`${whoPrefix}死亡豁免累计 3 次失败，角色【死亡】！`);
           }
         }
 
@@ -1504,14 +1614,30 @@ export function updateState(campaignName, updates = {}) {
 
 function mutateStateForRest(state, restType = 'short', options = {}) {
   clearEphemeralDeltas(state);
-  const targetMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
+  if (!['short', 'long'].includes(restType)) {
+    throw new Error(`未知休息类型: ${restType}（支持 short / long）`);
+  }
+  if (state.status?.inCombat || state.status?.encounter?.active) {
+    throw new Error('当前仍处于遭遇战中，不能开始休息；请先结束遭遇战并清理战斗状态');
+  }
 
-  // Reject rest if explicitly targeted member (or primary solo member) is dead
-  for (const m of targetMembers) {
-    const conds = getMemberConditions(state, m);
-    if (conds.includes('死亡') && (options.who || state.party.length === 1)) {
-      throw new Error(`角色【${m.name}】已死亡，无法通过休整恢复生命（需先复活 --revive）`);
-    }
+  const requestedMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
+  const deadMembers = requestedMembers.filter(m => getMemberConditions(state, m).includes('死亡'));
+  if (deadMembers.length && (options.who || state.party.length === 1)) {
+    throw new Error(`角色【${deadMembers[0].name}】已死亡，无法通过休整恢复生命（需先复活 --revive）`);
+  }
+  const unavailable = requestedMembers.filter(m =>
+    getMemberConditions(state, m).includes('死亡') || (m.hp?.current ?? 0) < 1
+  );
+  if (options.who && unavailable.length) {
+    const member = unavailable[0];
+    throw new Error(`角色【${member.name}】当前 HP 为 0 或已死亡，不能开始休息`);
+  }
+  const targetMembers = requestedMembers.filter(m =>
+    !getMemberConditions(state, m).includes('死亡') && (m.hp?.current ?? 0) >= 1
+  );
+  if (targetMembers.length === 0) {
+    throw new Error('队伍中没有 HP 至少为 1 且未死亡的角色可以休息');
   }
 
   if (restType === 'long') {
@@ -1539,14 +1665,22 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         delete char.spellSlots[lvl].lastDelta;
       }
 
-      for (const res of Object.values(char.resources || {})) {
-        res.current = res.max;
-        delete res.lastDelta;
+      const resourceDetails = [];
+      for (const [resourceName, resource] of Object.entries(char.resources || {})) {
+        const before = resource?.current;
+        const next = getResourceCurrentAfterRest(resource, 'long');
+        if (next !== undefined && next > before) {
+          resource.current = next;
+          resource.lastDelta = `+${next - before} 长休恢复`;
+          resourceDetails.push(`${resourceName} ${before}->${next}/${resource.max}`);
+        } else if (resource && typeof resource === 'object') {
+          delete resource.lastDelta;
+        }
       }
 
       const nextConditions = [];
       for (const c of conds) {
-        if (['浴血', '昏迷', '稳定', '力竭', '力竭 1', '力竭1'].includes(c)) {
+        if (['浴血', '稳定', '力竭', '力竭 1', '力竭1'].includes(c)) {
           continue;
         }
         const exhMatch = c.match(/^力竭\s*(\d+)$/);
@@ -1560,7 +1694,7 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         nextConditions.push(c);
       }
       conds.splice(0, conds.length, ...nextConditions);
-      details.push(`${char.name}: HP ${char.hp.max}/${char.hp.max}, 生命骰 +${diceRecover} (${char.hitDice.current}/${char.hitDice.total})`);
+      details.push(`${char.name}: HP ${char.hp.max}/${char.hp.max}, 生命骰 +${diceRecover} (${char.hitDice.current}/${char.hitDice.total})${resourceDetails.length ? `，资源恢复: ${resourceDetails.join(', ')}` : ''}`);
     }
 
     state.status.round = 0;
@@ -1572,7 +1706,7 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
     appendLog(
       state,
       '长休完成',
-      `生命值完全恢复，恢复全部法术位与职业资源，重获全部生命骰 (${details.join('; ')})`
+      `生命值完全恢复，恢复全部法术位与符合恢复规则的职业资源，重获全部生命骰 (${details.join('; ')})`
     );
   } else {
     // Short rest: Optional Hit Dice spending + reset short-rest resources
@@ -1587,32 +1721,45 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
       if (spend > primaryTarget.hitDice.current) {
         throw new Error(`可用生命骰不足 (当前剩余: ${primaryTarget.hitDice.current}/${primaryTarget.hitDice.total})`);
       }
-      const conMod = options.con !== undefined ? parseIntStrict(options.con, 'con', { min: -5, max: 10 }) : 0;
+      const conMod = options.heal !== undefined
+        ? 0
+        : (options.con !== undefined
+          ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
+          : (primaryTarget.abilities?.con !== undefined ? abilityMod(primaryTarget.abilities.con) : null));
+      if (conMod === null) {
+        throw new Error(`角色【${primaryTarget.name}】缺少体质属性；短休消耗生命骰时请提供 --con <体质调整值> 或补全 abilities.con`);
+      }
       const sides = parseInt(String(primaryTarget.hitDice.die || 'd10').replace(/^d/i, ''), 10) || 10;
 
       let totalRolled = 0;
+      let actualSpend = 0;
       const rolls = [];
       if (options.heal !== undefined) {
         totalRolled = parseIntStrict(options.heal, 'heal', { min: 0, max: 9999 });
+        actualSpend = spend;
       } else {
         const rng = createRng(options.rng);
-        for (let i = 0; i < spend; i++) {
-          const u = rng();
-          const clamped = u >= 1 ? 0.999999999 : (u < 0 ? 0 : u);
-          const r = Math.floor(clamped * sides) + 1;
+        for (let i = 0; i < spend && primaryTarget.hp.current + totalRolled < primaryTarget.hp.max; i++) {
+          const value = rng();
+          if (!Number.isFinite(value)) throw new Error('短休随机源必须返回有限数值');
+          const normalized = Math.min(1 - Number.EPSILON, Math.max(0, value));
+          const r = Math.floor(normalized * sides) + 1;
           const gained = Math.max(1, r + conMod);
           rolls.push(r);
           totalRolled += gained;
+          actualSpend += 1;
         }
       }
 
-      primaryTarget.hitDice.current -= spend;
+      primaryTarget.hitDice.current -= actualSpend;
       const prevHp = primaryTarget.hp.current;
       primaryTarget.hp.current = Math.min(primaryTarget.hp.max, primaryTarget.hp.current + totalRolled);
       const actualHealed = primaryTarget.hp.current - prevHp;
       primaryTarget.hp.lastDelta = `+${actualHealed} 短休生命骰`;
       syncHpConditionsForMember(state, primaryTarget, []);
-      hdDetail = `，【${primaryTarget.name}】消耗 ${spend} 枚生命骰(${primaryTarget.hitDice.die}${rolls.length ? ': [' + rolls.join(',') + ']' : ''})恢复 ${actualHealed} 点生命 (HP ${primaryTarget.hp.current}/${primaryTarget.hp.max})`;
+      hdDetail = actualSpend > 0
+        ? `，【${primaryTarget.name}】消耗 ${actualSpend} 枚生命骰(${primaryTarget.hitDice.die}${rolls.length ? ': [' + rolls.join(',') + ']' : ''})恢复 ${actualHealed} 点生命 (HP ${primaryTarget.hp.current}/${primaryTarget.hp.max})`
+        : `，【${primaryTarget.name}】当前生命已满，未消耗生命骰`;
     }
 
     // Recover short-rest resources across target members
@@ -1628,18 +1775,12 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         }
       }
       for (const [resName, res] of Object.entries(m.resources || {})) {
-        const rec = String(res.recovery || '').toLowerCase();
-        if (rec === 'short' || rec === 'short:all') {
-          if (res.current < res.max) {
-            res.current = res.max;
-            recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
-          }
-        } else if (rec.startsWith('short:')) {
-          const amt = parseInt(rec.split(':')[1], 10);
-          if (!Number.isNaN(amt) && amt > 0 && res.current < res.max) {
-            res.current = Math.min(res.max, res.current + amt);
-            recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
-          }
+        const before = res?.current;
+        const next = getResourceCurrentAfterRest(res, 'short');
+        if (next !== undefined && next > before) {
+          res.current = next;
+          res.lastDelta = `+${next - before} 短休恢复`;
+          recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
         }
       }
     }
@@ -1677,12 +1818,31 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
       action: `rest:${restType}`,
       mutate: (curState, curWorld) => {
         ensurePartyStructure(curState);
+        if (restType === 'long') {
+          const lastCompletedAt = curState.restState?.lastLongRestCompletedAt;
+          if (lastCompletedAt) {
+            const elapsed = toTotalHours(curWorld.calendar) - toTotalHours(lastCompletedAt);
+            if (elapsed < 16) {
+              throw new Error(`距离上次长休完成仅经过 ${elapsed} 小时；2024 规则要求至少等待 16 小时`);
+            }
+          }
+        }
         const nextState = mutateStateForRest(curState, restType, options);
         const timeRes = advanceWorldTimeWithTracks(curWorld, duration);
+        if (restType === 'long') {
+          nextState.restState = {
+            ...(nextState.restState || {}),
+            lastLongRestCompletedAt: formatTimestamp(timeRes.world.calendar)
+          };
+        }
         return {
           nextState,
           nextWorld: timeRes.world,
-          result: timeRes
+          result: {
+            ...timeRes,
+            restStartedAt: formatTimestamp(curWorld.calendar),
+            restCompletedAt: formatTimestamp(timeRes.world.calendar)
+          }
         };
       },
       _simulateCrashAfterStateWrite: Boolean(options._simulateCrashAfterStateWrite),
@@ -1690,11 +1850,58 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     });
 
     ensurePartyStructure(txRes.state);
+    if (!txRes.skipped && txRes.result) {
+      txRes.state.worldAdvance = {
+        deltaHours: txRes.result.deltaHours,
+        restStartedAt: txRes.result.restStartedAt,
+        restCompletedAt: txRes.result.restCompletedAt,
+        calendar: txRes.world.calendar,
+        events: (txRes.result.events || []).filter(event => event.visibility !== 'secret'),
+        linkageEvents: (txRes.result.linkageEvents || []).filter(event => event.visibility !== 'secret'),
+        overdueLedger: (txRes.result.overdueLedger || []).filter(item => item.visibility !== 'secret')
+      };
+    }
     return txRes.state;
   }
 
-  // 非 D 模式（A/B/C 经典模式）：完全保持原有单文件行为不变
+  // 经典模式使用独立的累计游戏时钟；现实时间不会影响规则裁决。
+  const elapsedHours = state.clock?.elapsedHours ?? 0;
+  const lastLongRestAt = state.restState?.lastLongRestCompletedAtHour;
+  if (restType === 'long' && lastLongRestAt !== null && lastLongRestAt !== undefined) {
+    const elapsedSinceRest = elapsedHours - lastLongRestAt;
+    if (elapsedSinceRest < 16) {
+      throw new Error(`距离上次长休完成仅经过 ${elapsedSinceRest} 小时；2024 规则要求至少等待 16 小时`);
+    }
+  }
   mutateStateForRest(state, restType, options);
+  const restDurationHours = restType === 'long' ? 8 : 1;
+  const nextElapsedHours = state.clock.elapsedHours + restDurationHours;
+  if (!Number.isSafeInteger(nextElapsedHours)) {
+    throw new Error('休息推进超出安全整数范围；未修改存档');
+  }
+  state.clock.elapsedHours = nextElapsedHours;
+  if (restType === 'long') {
+    state.restState.lastLongRestCompletedAtHour = state.clock.elapsedHours;
+  }
+  return saveState(campaignName, state);
+}
+
+export function advanceSessionTime(campaignName, rawHours) {
+  const state = getState(campaignName);
+  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
+  if (state.meta?.mode === 'D') {
+    throw new Error('D 模式请使用 world.js time --advance 推进世界时间');
+  }
+  if (state.status?.inCombat || state.status?.encounter?.active) {
+    throw new Error('战斗期间不能推进非战斗游戏时间');
+  }
+  const hours = parseIntStrict(rawHours, 'advance', { min: 1, max: 8640 });
+  const nextElapsedHours = state.clock.elapsedHours + hours;
+  if (!Number.isSafeInteger(nextElapsedHours)) {
+    throw new Error('游戏时间推进超出安全整数范围；未修改存档');
+  }
+  state.clock.elapsedHours = nextElapsedHours;
+  appendLog(state, '时间推进', `游戏时间推进 ${hours} 小时（累计 ${state.clock.elapsedHours} 小时）`);
   return saveState(campaignName, state);
 }
 
@@ -2307,6 +2514,7 @@ ${colors.yellow}指令:${colors.reset}
   show <campaign> [options]       显示战役当前状态 (支持 --hud, --json, --veil)
   update <campaign> [options]     实时更新生命、法术位、职业资源、专注、金币、物品与状态
   rest <campaign> <--short|--long> [--dice <N>] [--con <mod>] 执行短休或长休恢复
+  time <campaign> --advance <hours>   推进非 D 模式游戏时间（长休间隔按游戏时间计算）
   promote <campaign> --class <职业> [--con <mod>] [--armor <甲>|--ac <AC>] [--cha <mod>] 0→1级转职
   next <campaign>                 推进战斗先攻指针，自动递增轮次并递减带轮次状态 (如 中毒:2)
   mob-add <campaign> [options]    遭遇战加入敌方怪物 (--name <名> --hp <血> --ac <甲> --count <数> --init <先攻>)
@@ -2400,6 +2608,7 @@ export function parseCliArgs(args) {
     else if (arg === '--break-concentration') options.breakConcentration = true;
     else if (arg === '--list') options.list = true;
     else if (arg === '--mode') options.mode = requireVal(i++, '--mode');
+    else if (arg === '--advance') options.advance = requireVal(i++, '--advance');
     else if (arg === '--copper') options.copper = requireVal(i++, '--copper');
     else if (arg === '--op-id') options.opId = requireVal(i++, '--op-id');
     else if (arg === '--preset') options.preset = requireVal(i++, '--preset');
@@ -2498,7 +2707,7 @@ function main() {
       } else if (campaign) {
         const st = getState(campaign);
         if (st && Array.isArray(st.party)) {
-          partyLevels = st.party.map(p => p.level || 1);
+          partyLevels = st.party.map(p => p.level ?? 1);
         }
       }
       const monsterCrs = options.crs
@@ -2521,6 +2730,12 @@ function main() {
     if (!campaign) {
       console.error(`${colors.red}错误: 请指定战役名称 (例如: goblin-cave)${colors.reset}`);
       process.exit(1);
+    }
+
+    if (command === 'time') {
+      const state = advanceSessionTime(campaign, options.advance);
+      console.log(`✓ 游戏时间推进 ${options.advance} 小时（累计 ${state.clock.elapsedHours} 小时）`);
+      return;
     }
 
     if (command === 'init') {
@@ -2559,6 +2774,23 @@ function main() {
       const state = applyRest(campaign, restType, options);
       console.log(`${colors.green}✓ 战役 "${campaign}" 完成${restType === 'long' ? '长休' : '短休'}！${colors.reset}\n`);
       console.log(generateHud(state, 'line', { veil: options.veil }));
+
+      if (state.worldAdvance) {
+        const advance = state.worldAdvance;
+        console.log(`\n📅 世界时间: ${advance.restStartedAt} → ${advance.restCompletedAt} (+${advance.deltaHours}h)`);
+        for (const event of advance.events || []) {
+          const title = event.summary || event.clockName || event.name || event.type || '世界事件';
+          const progress = Number.isSafeInteger(event.max)
+            ? ` (${event.before}->${event.after}/${event.max})`
+            : '';
+          console.log(`  ⏱️ ${title}${progress}`);
+        }
+        for (const item of advance.overdueLedger || []) {
+          console.log(`  ⚠️ 逾期: ${item.summary}`);
+        }
+      } else if (state.clock) {
+        console.log(`\n⌛ 游戏时间累计: ${state.clock.elapsedHours} 小时`);
+      }
     } else if (command === 'next') {
       const state = advanceTurn(campaign);
       if (state.status.initWarning) {

@@ -12,6 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
+test('lookup - 导入模块不会永久覆盖宿主进程的 process.emitWarning', () => {
+  const moduleUrl = new URL('../scripts/lookup.js', import.meta.url).href;
+  const source = `const original = process.emitWarning; const mod = await import(${JSON.stringify(moduleUrl)}); mod.lookup('spell', '火球术', { json: true }); if (process.emitWarning !== original) process.exit(1);`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test('lookup - 2024/2025 核心怪兽点查与双语检索 (地精武者 / Goblin Warrior / 邪魔邪教徒)', () => {
   const result = lookup('monster', '地精武者', { brief: true, json: true });
   assert.ok(result, '应返回查询结果对象');

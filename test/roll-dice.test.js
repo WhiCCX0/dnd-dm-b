@@ -62,9 +62,37 @@ test('roll - 优劣势同时存在时抵消并标注 Adv+Dis Canceled (L3)', () 
   const canceled = roll('1d20+4', { advantage: true, disadvantage: true });
   assert.equal(canceled.mode, 'Adv+Dis Canceled');
   assert.match(canceled.expr, /Adv\+Dis Canceled/);
-  assert.equal(canceled.rolls.length, 2);
-  assert.equal(canceled.chosen, canceled.rolls[0], '优劣势抵消时应取第一颗 d20 结果');
+  assert.equal(canceled.rolls.length, 1, '优劣势抵消时只能投掷一颗 d20');
+  assert.equal(canceled.chosen, canceled.rolls[0], '优劣势抵消时应取唯一 d20 结果');
   assert.equal(canceled.total, canceled.rolls[0] + 4);
+
+  let calls = 0;
+  const compound = roll('1d20+1d4+2', {
+    advantage: true,
+    disadvantage: true,
+    rng: () => { calls += 1; return 0.5; }
+  });
+  assert.equal(calls, 2, '复合检定只应投一次 d20，另一次用于 1d4');
+  assert.equal(compound.terms[0].rolls.length, 1);
+});
+
+test('roll - 暗骰 JSON 仅暴露结果与裁决，不暴露骰点、公式、DC/AC 或标签', () => {
+  const stdout = execFileSync(process.execPath, [
+    ROLL_SCRIPT, '1d20+5', '--attack', '--ac', '17',
+    '--label', 'GM隐藏标签', '--hidden', '--json'
+  ], {
+    encoding: 'utf-8',
+    env: { ...process.env, DND_RNG_VALUES: '0.5' }
+  });
+  const result = JSON.parse(stdout);
+  const serialized = JSON.stringify(result);
+  assert.equal(result.total, 16);
+  assert.equal(result.verdict, 'MISS');
+  assert.equal(result.results[0].total, 16);
+  assert.equal(result.results[0].verdict, 'MISS');
+  for (const forbidden of ['rolls', 'expr', 'terms', 'dc', 'ac', 'label', 'GM隐藏标签']) {
+    assert.equal(serialized.includes(forbidden), false, '暗骰 JSON 不得包含 ' + forbidden);
+  }
 });
 
 test('roll - 非法 --adv / --dis 投骰表达式严格拦截 (L1)', () => {
