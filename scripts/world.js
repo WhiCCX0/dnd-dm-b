@@ -1482,7 +1482,7 @@ function main() {
     if (command === 'init') {
       const world = initWorld(campaign, options);
       if (options.json) {
-        console.log(JSON.stringify(world, null, 2));
+        console.log(JSON.stringify(projectPlayerResult(world, { gm: Boolean(options.gm) }), null, 2));
       } else {
         console.log(formatWorldStatus(world, { gm: Boolean(options.gm), campaign }));
       }
@@ -1510,29 +1510,33 @@ function main() {
         }
       }
     } else if (command === 'clock') {
-      const res = manageClock(campaign, options);
+      const res = projectPlayerResult(manageClock(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const c of res.clocks) {
           console.log(`⏱️ [${c.id}] ${c.name} (${c.kind}/${c.cadence}): ${c.current}/${c.max} [${c.status}] 下次结算:${c.nextTick}`);
         }
-      } else {
+      } else if (res.clock) {
         console.log(`✓ 时钟 [${res.clock.id}] ${res.clock.name}: ${res.clock.current}/${res.clock.max} [${res.clock.status}] (nextTick: ${res.clock.nextTick})`);
+      } else {
+        console.log('✓ 时钟已更新（该时钟属于 GM 密档）');
       }
     } else if (command === 'ledger') {
-      const res = manageLedger(campaign, options);
+      const res = projectPlayerResult(manageLedger(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const l of res.ledger) {
           console.log(`📒 [${l.id}] (${l.type}/${l.status}) ${l.summary}${l.dueAt ? ` [期限:${l.dueAt}]` : ''}`);
         }
-      } else {
+      } else if (res.entry) {
         console.log(`✓ 账本 [${res.entry.id}] (${res.entry.type}/${res.entry.status}): ${res.entry.summary}`);
+      } else {
+        console.log('✓ 账本已更新（该记录属于 GM 密档）');
       }
     } else if (command === 'canon') {
-      const res = manageCanon(campaign, options);
+      const res = projectPlayerResult(manageCanon(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'check') {
@@ -1541,36 +1545,42 @@ function main() {
         for (const c of res.canon) {
           console.log(`📜 [${c.id}] ${c.entityId}.${c.predicate} = ${c.value} (${c.status}, ${c.validFrom || '创世'} ~ ${c.validTo || '至今'})`);
         }
-      } else {
+      } else if (res.entry) {
         console.log(`✓ 世界事实 [${res.entry.id}] ${res.entry.entityId}.${res.entry.predicate} = ${res.entry.value} (${res.entry.status})`);
         for (const sc of res.suspectedConflicts || []) {
           console.log(`⚠️ 疑似冲突提示: ${sc.reason}`);
         }
+      } else {
+        console.log('✓ 世界事实已登记（该记录属于 GM 密档）');
       }
     } else if (command === 'npc') {
-      const res = manageNpc(campaign, options);
+      const res = projectPlayerResult(manageNpc(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const n of res.npcs) {
           console.log(`👤 [${n.id}] ${n.name} (${n.alive ? '存活' : '已故'}, 态度:${n.attitude}) 诉求:${n.desire}`);
         }
-      } else {
+      } else if (res.npc) {
         console.log(`✓ 人物 [${res.npc.id}] ${res.npc.name} (${res.npc.alive ? '存活' : '已故'}, 态度:${res.npc.attitude}) 声线:${res.npc.voice}`);
+      } else {
+        console.log('✓ 人物已登记（该人物属于 GM 密档）');
       }
     } else if (command === 'rumor') {
-      const res = manageRumor(campaign, options);
+      const res = projectPlayerResult(manageRumor(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (res.action === 'list') {
         for (const r of res.rumors) {
           console.log(`🗣️ [${r.id}] [${r.tier}/${r.credibility}] ${r.text}`);
         }
-      } else {
+      } else if (res.rumor) {
         console.log(`🗣️ [${res.rumor.id}] [${res.rumor.tier}/${res.rumor.credibility}] ${res.rumor.text}`);
+      } else {
+        console.log('🗣️ 已登记隐藏传闻（GM 密档）');
       }
     } else if (command === 'oracle') {
-      const res = runOracle(campaign, options);
+      const res = projectPlayerResult(runOracle(campaign, options), { gm: Boolean(options.gm) });
       if (options.json) {
         console.log(JSON.stringify(res, null, 2));
       } else {
