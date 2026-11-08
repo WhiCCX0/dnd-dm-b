@@ -201,6 +201,17 @@ test('state - 0 HP 受到伤害即使被临时 HP 完全吸收也增加死亡豁
   assert.equal(state.character.deathSaves.failures, 1);
 });
 
+test('state - 0 HP 时达到 HP 上限的单次伤害即死，即使临时 HP 吸收伤害', () => {
+  initSession(TEST_CAMPAIGN, { name: '巨额伤害测试者', hp: 12 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  updateState(TEST_CAMPAIGN, { tempHp: 20 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  const state = getState(TEST_CAMPAIGN);
+  assert.ok(state.character.conditions.includes('死亡'));
+  assert.equal(state.character.deathSaves.failures, 3);
+  assert.equal(state.character.hp.temp, 8, '临时 HP 仍按先吸收伤害的顺序扣除');
+});
+
 test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 CON，满血时不浪费生命骰', () => {
   initSession(TEST_CAMPAIGN, { preset: 'valen' });
   updateState(TEST_CAMPAIGN, { hp: '-12' });
