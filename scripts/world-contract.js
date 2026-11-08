@@ -583,8 +583,8 @@ export function validateWorldDoc(worldDoc) {
     if (!TIER_LEVELS.includes(r.tier)) {
       throw new Error(`rumor "${r.id}" 的 tier 非法: ${r.tier}`);
     }
-    if (r.region !== undefined && typeof r.region !== 'string') {
-      throw new Error(`rumor "${r.id}" 的 region 必须为字符串`);
+    if (r.region !== undefined && r.region !== null && typeof r.region !== 'string') {
+      throw new Error(`rumor "${r.id}" 的 region 必须为字符串或 null`);
     }
     validateVisibility(r.visibility, `rumor(${r.id})`);
   }
