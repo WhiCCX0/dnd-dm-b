@@ -216,8 +216,9 @@ test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 
     class: '战士',
     level: 2,
     hp: 20,
-    abilities: { str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 10 }
-  },);
+    abilities: { str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
+    force: true
+  });
   updateState(TEST_CAMPAIGN, { hp: '-12' });
   const rested = applyRest(TEST_CAMPAIGN, 'short', { dice: 2, rng: () => 0.99 });
   assert.equal(rested.character.hp.current, 20);
