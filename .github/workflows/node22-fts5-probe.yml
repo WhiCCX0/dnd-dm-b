@@ -1,0 +1,49 @@
+name: Node 22 FTS5 capability probe
+
+on:
+  push:
+    branches: [ci/probe-node22-fts5-20261108]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Node.js ${{ matrix.node-version }} / FTS5
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        node-version:
+          - '22.13.0'
+          - '22.13.1'
+          - '22.14.0'
+          - '22.15.0'
+          - '22.15.1'
+          - '22.16.0'
+          - '22.17.0'
+          - '22.17.1'
+          - '22.18.0'
+          - '22.19.0'
+          - '22.20.0'
+          - '22.21.0'
+          - '22.21.1'
+          - '22.22.0'
+          - '22.22.1'
+          - '22.22.2'
+          - '22.22.3'
+          - '22.23.0'
+          - '22.23.1'
+          - '22.23.2'
+          - '22.23.3'
+          - '22.23.4'
+          - '22.x'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Check built-in SQLite FTS5
+        run: >-
+          node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); try { db.exec('CREATE VIRTUAL TABLE t USING fts5(x)'); console.log(JSON.stringify({ node: process.version, sqlite: db.prepare('SELECT sqlite_version() AS version').get().version, fts5: true })); } catch (error) { console.log(JSON.stringify({ node: process.version, sqlite: db.prepare('SELECT sqlite_version() AS version').get().version, fts5: false, error: error.message })); } finally { db.close(); }"
