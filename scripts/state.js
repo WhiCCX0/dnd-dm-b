@@ -639,11 +639,37 @@ function ensurePartyStructure(state) {
 
   if (!state.clock || typeof state.clock !== 'object') {
     state.clock = { elapsedHours: 0 };
-  } else if (!Number.isSafeInteger(state.clock.elapsedHours) || state.clock.elapsedHours < 0) {
+  } else if (state.clock.elapsedHours === undefined) {
     state.clock.elapsedHours = 0;
+  } else if (!Number.isSafeInteger(state.clock.elapsedHours) || state.clock.elapsedHours < 0) {
+    throw new Error('战役游戏时钟损坏：clock.elapsedHours 必须是非负安全整数；拒绝静默重置以免绕过休息间隔');
   }
+
   if (!state.restState || typeof state.restState !== 'object') {
     state.restState = { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null };
+  } else {
+    if (state.restState.lastLongRestCompletedAtHour === undefined) {
+      state.restState.lastLongRestCompletedAtHour = null;
+    }
+    if (state.restState.lastLongRestCompletedAt === undefined) {
+      state.restState.lastLongRestCompletedAt = null;
+    }
+    const lastCompletedHour = state.restState.lastLongRestCompletedAtHour;
+    if (lastCompletedHour !== null &&
+      (!Number.isSafeInteger(lastCompletedHour) || lastCompletedHour < 0 || lastCompletedHour > state.clock.elapsedHours)) {
+      throw new Error('战役休息记录损坏：lastLongRestCompletedAtHour 必须是不晚于当前游戏时钟的非负安全整数');
+    }
+    const lastCompletedAt = state.restState.lastLongRestCompletedAt;
+    if (lastCompletedAt !== null) {
+      if (typeof lastCompletedAt !== 'string') {
+        throw new Error('战役休息记录损坏：lastLongRestCompletedAt 必须为时间戳字符串');
+      }
+      try {
+        toTotalHours(lastCompletedAt);
+      } catch (error) {
+        throw new Error(`战役休息记录损坏：lastLongRestCompletedAt 无法解析（${error.message}）`);
+      }
+    }
   }
 
   if (!state.notes) {
@@ -1838,7 +1864,12 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     }
   }
   mutateStateForRest(state, restType, options);
-  state.clock.elapsedHours += restType === 'long' ? 8 : 1;
+  const restDurationHours = restType === 'long' ? 8 : 1;
+  const nextElapsedHours = state.clock.elapsedHours + restDurationHours;
+  if (!Number.isSafeInteger(nextElapsedHours)) {
+    throw new Error('休息推进超出安全整数范围；未修改存档');
+  }
+  state.clock.elapsedHours = nextElapsedHours;
   if (restType === 'long') {
     state.restState.lastLongRestCompletedAtHour = state.clock.elapsedHours;
   }
@@ -1855,7 +1886,11 @@ export function advanceSessionTime(campaignName, rawHours) {
     throw new Error('战斗期间不能推进非战斗游戏时间');
   }
   const hours = parseIntStrict(rawHours, 'advance', { min: 1, max: 8640 });
-  state.clock.elapsedHours += hours;
+  const nextElapsedHours = state.clock.elapsedHours + hours;
+  if (!Number.isSafeInteger(nextElapsedHours)) {
+    throw new Error('游戏时间推进超出安全整数范围；未修改存档');
+  }
+  state.clock.elapsedHours = nextElapsedHours;
   appendLog(state, '时间推进', `游戏时间推进 ${hours} 小时（累计 ${state.clock.elapsedHours} 小时）`);
   return saveState(campaignName, state);
 }
