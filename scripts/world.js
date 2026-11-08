@@ -846,7 +846,7 @@ export function manageClock(campaignName, options = {}) {
     const newClock = { id, name, kind, cadence, current, max, status, nextTick, visibility };
     world.clocks.push(newClock);
     saveWorld(campaignName, world);
-    return { action: 'add', clock: newClock, world, linkageEvents };
+    return projectPlayerResult({ action: 'add', clock: newClock, world, linkageEvents }, { gm: Boolean(options.gm) });
   }
 
   if (options.pause || options.resume || options.cancel || options.advance !== undefined || options.status) {
@@ -901,7 +901,7 @@ export function manageClock(campaignName, options = {}) {
     }
 
     saveWorld(campaignName, world);
-    return { action: 'update', clock: clk, world, linkageEvents };
+    return projectPlayerResult({ action: 'update', clock: clk, world, linkageEvents }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -955,7 +955,7 @@ export function manageLedger(campaignName, options = {}) {
     };
     world.ledger.push(entry);
     saveWorld(campaignName, world);
-    return { action: 'add', entry, world };
+    return projectPlayerResult({ action: 'add', entry, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.update) {
@@ -970,7 +970,7 @@ export function manageLedger(campaignName, options = {}) {
     if (options.overdueConsequence !== undefined) entry.overdueConsequence = options.overdueConsequence;
     if (options.visibility !== undefined) entry.visibility = options.visibility;
     saveWorld(campaignName, world);
-    return { action: 'update', entry, world };
+    return projectPlayerResult({ action: 'update', entry, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -998,7 +998,7 @@ export function manageCanon(campaignName, options = {}) {
     }
     target.validTo = options.validTo || formatTimestamp(world.calendar);
     saveWorld(campaignName, world);
-    return { action: 'retire', entry: target, world, suspectedConflicts: [] };
+    return projectPlayerResult({ action: 'retire', entry: target, world, suspectedConflicts: [] }, { gm: Boolean(options.gm) });
   }
 
   if (options.check || options.add) {
@@ -1016,18 +1016,46 @@ export function manageCanon(campaignName, options = {}) {
 
     if (options.check) {
       const checkRes = checkCanonConflict(world.canon, candidate);
+      if (!options.gm) {
+        const visibleCanon = world.canon.filter(entry => entry.visibility !== 'secret');
+        const visibleCheck = checkCanonConflict(visibleCanon, candidate);
+        if (candidate.visibility === 'secret' || (checkRes.conflict && !visibleCheck.conflict)) {
+          return {
+            action: 'check',
+            candidate: projectPlayerResult(candidate),
+            conflict: true,
+            hardConflicts: [{ reason: '检测到与 GM 密档有关的定论冲突；详细信息仅供 GM 查看' }],
+            suspectedConflicts: []
+          };
+        }
+        return projectPlayerResult({
+          action: 'check',
+          candidate,
+          conflict: checkRes.conflict,
+          hardConflicts: checkRes.hardConflicts.map(item => ({ reason: '存在定论冲突；详细原因请 GM 复核' })),
+          suspectedConflicts: checkRes.suspectedConflicts.map(item => ({ reason: '存在疑似冲突；请 GM 复核' }))
+        });
+      }
       return { action: 'check', candidate, ...checkRes };
     }
 
-    const appendRes = appendCanonEntry(world.canon, candidate);
+    let appendRes;
+    try {
+      appendRes = appendCanonEntry(world.canon, candidate);
+    } catch (error) {
+      if (!options.gm) {
+        throw new Error('canon 定论冲突拒绝写入；可能涉及 GM 密档或公开事实，请由 GM 复核');
+      }
+      throw error;
+    }
     world.canon = appendRes.canon;
     saveWorld(campaignName, world);
-    return {
+    return projectPlayerResult({
       action: 'add',
       entry: candidate,
       suspectedConflicts: appendRes.suspectedConflicts,
       world
-    };
+    }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -1106,7 +1134,7 @@ export function manageNpc(campaignName, options = {}) {
     };
     world.npcs.push(npc);
     saveWorld(campaignName, world);
-    return { action: 'add', npc, world };
+    return projectPlayerResult({ action: 'add', npc, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.update) {
@@ -1160,7 +1188,7 @@ export function manageNpc(campaignName, options = {}) {
     }
 
     saveWorld(campaignName, world);
-    return { action: 'update', npc: updated, world };
+    return projectPlayerResult({ action: 'update', npc: updated, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
@@ -1204,7 +1232,7 @@ export function manageRumor(campaignName, options = {}) {
     };
     world.rumors.push(rumor);
     saveWorld(campaignName, world);
-    return { action: 'add', rumor, world };
+    return projectPlayerResult({ action: 'add', rumor, world }, { gm: Boolean(options.gm) });
   }
 
   if (options.draw) {
@@ -1260,7 +1288,7 @@ export function manageRumor(campaignName, options = {}) {
     }
 
     saveWorld(campaignName, world);
-    return { action: 'draw', rumor: rumorEntry, maxTier, world };
+    return projectPlayerResult({ action: 'draw', rumor: rumorEntry, maxTier, world }, { gm: Boolean(options.gm) });
   }
 
   const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
