@@ -1361,22 +1361,25 @@ export function runOracle(campaignName, options = {}) {
   const drawRes = drawIndexWithRng(world.rng, group.entries.length);
   world.rng = drawRes.nextRng;
   const entry = group.entries[drawRes.index];
-  const hiddenEntry = entry.visibility === 'secret' && !options.gm;
+  const visibleEntry = projectPlayerResult(entry, { gm: Boolean(options.gm) });
+  const hiddenEntry = !visibleEntry;
 
   saveWorld(campaignName, world);
 
-  return {
+  return projectPlayerResult({
     action: 'oracle',
     question: options.question || null,
-    odds: options.odds || 'even',
+    odds,
     roll,
     answer,
     tableKey: group.tableKey,
     tableName: group.name,
-    entry: hiddenEntry ? null : entry,
-    omen: hiddenEntry ? '（隐藏结果）' : (entry.text || entry.sign || entry.title || JSON.stringify(entry)),
+    entry: hiddenEntry ? null : visibleEntry,
+    omen: hiddenEntry
+      ? '（隐藏结果）'
+      : (visibleEntry.text || visibleEntry.sign || visibleEntry.title || JSON.stringify(visibleEntry)),
     world: filterPlayerVisible(world, { gm: Boolean(options.gm) })
-  };
+  }, { gm: Boolean(options.gm) });
 }
 
 // ============================================================================
