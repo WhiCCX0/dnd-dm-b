@@ -437,6 +437,12 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     id: npc.id,
     alive: false
   });
+  assert.throws(() => manageNpc(campaign, {
+    add: true,
+    id: 'npc:bad_alive',
+    name: '布尔值输入错误',
+    alive: 'sometimes'
+  }), /--alive 必须是 true 或 false/);
   assert.equal(getWorld(campaign).npcs.find(n => n.id === npc.id).alive, false);
 
   assert.throws(
@@ -448,10 +454,14 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     /已死亡.*复活/
   );
 
+  assert.throws(() => manageNpc(campaign, {
+    update: true,
+    id: npc.id,
+    revive: true
+  }), /必须提供 --revive-reason 或 --spell/);
   const reviveRes = manageNpc(campaign, {
     update: true,
     id: npc.id,
-    alive: true,
     revive: true,
     reviveReason: '圣座高阶牧师施展死者复活'
   });
@@ -608,6 +618,9 @@ test('world - 自定义 activeTracks 必须是 3 至 4 条已知且不重复的�
   }), /未知演化线/);
   assert.throws(() => initWorld(campaign, {
     activeTracks: 'track:war,track:trade,track:war'
+  }), /3 至 4 条不同的演化线/);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,战争,track:trade'
   }), /3 至 4 条不同的演化线/);
 });
 
