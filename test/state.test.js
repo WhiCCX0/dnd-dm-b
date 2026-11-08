@@ -257,7 +257,10 @@ test('state - 损坏的休息时间戳拒绝静默重置，累计游戏时钟溢
   fs.writeFileSync(filePath, JSON.stringify(corrupted, null, 2), 'utf8');
   assert.throws(() => getState(TEST_CAMPAIGN), /lastLongRestCompletedAtHour/);
 
-  initSession(TEST_CAMPAIGN, { name: '时钟溢出者', hp: 12, force: true });
+  // initSession 故意拒绝读取损坏的既有存档；测试应显式清理损坏 fixture，而不是绕过生产校验。
+  fs.rmSync(filePath, { force: true });
+  fs.rmSync(`${filePath}.bak`, { force: true });
+  initSession(TEST_CAMPAIGN, { name: '时钟溢出者', hp: 12 });
   const maxed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   maxed.clock.elapsedHours = Number.MAX_SAFE_INTEGER;
   fs.writeFileSync(filePath, JSON.stringify(maxed, null, 2), 'utf8');
