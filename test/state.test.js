@@ -268,6 +268,21 @@ test('state - 损坏的休息时间戳拒绝静默重置，累计游戏时钟溢
   assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, Number.MAX_SAFE_INTEGER);
 });
 
+test('state - clock/restState 容器损坏时拒绝静默重置', () => {
+  initSession(TEST_CAMPAIGN, { name: '时钟结构校验者', hp: 12 });
+  const filePath = getSessionPath(TEST_CAMPAIGN);
+  const original = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+  for (const [field, invalid] of [['clock', null], ['clock', []], ['clock', {}], ['restState', null], ['restState', []]]) {
+    const corrupted = structuredClone(original);
+    corrupted[field] = invalid;
+    fs.writeFileSync(filePath, JSON.stringify(corrupted, null, 2), 'utf8');
+    assert.throws(() => getState(TEST_CAMPAIGN), /时钟损坏|休息记录损坏/);
+  }
+  fs.writeFileSync(filePath, JSON.stringify(original, null, 2), 'utf8');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 0);
+});
+
 test('state - 长休按资源恢复规则结算：短休资源全恢复、长休定量资源递增、非休息资源不变', () => {
   initSession(TEST_CAMPAIGN, {
     name: '资源测试者',
