@@ -48,6 +48,19 @@ export const WORLD_FORBIDDEN_KEYS = Object.freeze([
 const MAX_COMPLETED_OP_IDS = 128;
 const TERMINAL_VALUES = new Set(['灭亡', '已灭亡', '毁灭', '已毁灭', '死亡', '已死亡', '覆灭', '崩塌']);
 
+function validateUniqueRecordIds(records, label) {
+  const seen = new Set();
+  for (const [index, record] of records.entries()) {
+    if (!record || typeof record !== 'object' || typeof record.id !== 'string' || !record.id.trim()) {
+      throw new Error(`world.json.${label}[${index}].id 必须为非空字符串`);
+    }
+    if (seen.has(record.id)) {
+      throw new Error(`world.json.${label} 出现重复 ID: "${record.id}"`);
+    }
+    seen.add(record.id);
+  }
+}
+
 function assertNonNegativeSafeInt(val, label) {
   if (typeof val !== 'number' || !Number.isSafeInteger(val) || val < 0) {
     throw new Error(`${label} 必须为非负整数，实际收到: ${String(val)}`);
@@ -437,11 +450,20 @@ export function validateWorldDoc(worldDoc) {
   if (!Array.isArray(meta.completedOpIds)) {
     throw new Error('world.json.meta.completedOpIds 必须为数组');
   }
+  if (
+    meta.completedOpIds.length > MAX_COMPLETED_OP_IDS ||
+    meta.completedOpIds.some(id => typeof id !== 'string' || !id.trim()) ||
+    new Set(meta.completedOpIds).size !== meta.completedOpIds.length
+  ) {
+    throw new Error(`world.json.meta.completedOpIds 必须是最多 ${MAX_COMPLETED_OP_IDS} 个非空且不重复的字符串`);
+  }
   validateCalendarObj(worldDoc.calendar);
   if (
     !worldDoc.rng ||
     !Number.isSafeInteger(worldDoc.rng.seed) ||
-    !Number.isSafeInteger(worldDoc.rng.state)
+    worldDoc.rng.seed < 0 || worldDoc.rng.seed > 0xffffffff ||
+    !Number.isSafeInteger(worldDoc.rng.state) ||
+    worldDoc.rng.state < 0 || worldDoc.rng.state > 0xffffffff
   ) {
     throw new Error('world.json.rng 必须包含无符号 32 位整数 { seed, state }');
   }
@@ -454,6 +476,10 @@ export function validateWorldDoc(worldDoc) {
   if (worldDoc.eventHistory !== undefined && !Array.isArray(worldDoc.eventHistory)) {
     throw new Error('world.json.eventHistory 必须为数组');
   }
+  for (const key of ['locations', 'factions', 'npcs', 'clocks', 'ledger', 'canon', 'rumors']) {
+    validateUniqueRecordIds(worldDoc[key], key);
+  }
+  validateUniqueRecordIds(worldDoc.eventHistory || [], 'eventHistory');
   for (const [index, event] of (worldDoc.eventHistory || []).entries()) {
     if (!event || typeof event !== 'object' || typeof event.id !== 'string' || !event.id.trim()) {
       throw new Error(`world.json.eventHistory[${index}] 必须包含非空字符串 id`);
