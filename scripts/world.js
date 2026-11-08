@@ -72,7 +72,8 @@ export function projectPlayerResult(value, { gm = false } = {}) {
     if (item.visibility === 'secret') return undefined;
     const projected = {};
     for (const [key, nested] of Object.entries(item)) {
-      if (key === 'secret') continue;
+      // World JSON is user-editable; never copy prototype-sensitive keys into result objects.
+      if (key === 'secret' || key === '__proto__' || key === 'prototype' || key === 'constructor') continue;
       const safe = visit(nested);
       if (safe !== undefined) projected[key] = safe;
     }
