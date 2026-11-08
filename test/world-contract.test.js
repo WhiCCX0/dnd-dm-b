@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   WORLD_SCHEMA_VERSION,
   JIANHUO_WORLD_ID,
+  MAX_WORLD_EVENT_HISTORY,
   PERIOD_NAMES,
   CADENCE_HOURS,
   TIER_LEVELS,
@@ -209,6 +210,12 @@ test('phase0 (数据结构与单一权威) - D 模式元数据、铜币无损换
     ]
   };
   assert.equal(validateWorldDoc(validWorld).valid, true);
+  assert.throws(() => validateWorldDoc({
+    ...validWorld,
+    eventHistory: Array.from({ length: MAX_WORLD_EVENT_HISTORY + 1 }, (_, index) => ({
+      id: `evt:${index}`, type: 'test', recordedAt: 'Y0142-M01-D01T08', visibility: 'public'
+    }))
+  }), /eventHistory 最多保留/);
   assert.throws(() => validateWorldDoc({
     ...validWorld,
     rumors: [...validWorld.rumors, { ...validWorld.rumors[0] }]
