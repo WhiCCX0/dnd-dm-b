@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   WORLD_SCHEMA_VERSION,
   JIANHUO_WORLD_ID,
+  MAX_WORLD_EVENT_HISTORY,
   CADENCE_HOURS,
   TIER_LEVELS,
   LEDGER_TYPES,
@@ -402,7 +403,7 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
   nextWorld.eventHistory = [
     ...(nextWorld.eventHistory || []),
     ...events
-  ].slice(-500);
+  ].slice(-MAX_WORLD_EVENT_HISTORY);
 
   return {
     world: nextWorld,
