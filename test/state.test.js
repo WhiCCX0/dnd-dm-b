@@ -17,6 +17,7 @@ import {
   advanceTurn,
   manageNotes,
   calculateEncounterDifficulty,
+  advanceSessionTime,
   parseCliArgs
 } from '../scripts/state.js';
 import { lookup } from '../scripts/lookup.js';
@@ -187,6 +188,65 @@ test('state - 巨额溢伤即死、已死亡禁疗锁、--revive 复活与 3 次
   state = getState(TEST_CAMPAIGN);
   assert.ok(!state.status.conditions.includes('稳定'));
   assert.equal(state.character.deathSaves.failures, 1);
+});
+
+test('state - 0 HP 受到伤害即使被临时 HP 完全吸收也增加死亡豁免失败', () => {
+  initSession(TEST_CAMPAIGN, { name: '瓦伦', hp: 12 });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  updateState(TEST_CAMPAIGN, { tempHp: 5 });
+  updateState(TEST_CAMPAIGN, { hp: '-3' });
+  const state = getState(TEST_CAMPAIGN);
+  assert.equal(state.character.hp.current, 0);
+  assert.equal(state.character.hp.temp, 2);
+  assert.equal(state.character.deathSaves.failures, 1);
+});
+
+test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 CON，满血时不浪费生命骰', () => {
+  initSession(TEST_CAMPAIGN, { preset: 'valen' });
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'short'), /没有 HP 至少为 1/);
+
+  initSession(TEST_CAMPAIGN, { preset: 'valen', force: true });
+  addEncounterMob(TEST_CAMPAIGN, { name: '守卫', hp: 10, ac: 12 });
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'short'), /不能开始休息/);
+
+  clearEncounter(TEST_CAMPAIGN);
+  initSession(TEST_CAMPAIGN, {
+    name: '瓦伦',
+    class: '战士',
+    level: 2,
+    hp: 20,
+    abilities: { str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 10 }
+  },);
+  updateState(TEST_CAMPAIGN, { hp: '-12' });
+  const rested = applyRest(TEST_CAMPAIGN, 'short', { dice: 2, rng: () => 0.99 });
+  assert.equal(rested.character.hp.current, 20);
+  assert.equal(rested.character.hitDice.current, 1, '恢复满血后应停止继续消耗生命骰');
+
+  const noWaste = applyRest(TEST_CAMPAIGN, 'short', { dice: 1, rng: () => 0.99 });
+  assert.equal(noWaste.character.hp.current, 20);
+  assert.equal(noWaste.character.hitDice.current, 1, '满血时不应消耗生命骰');
+});
+
+test('state - 非 D 模式累计游戏时钟执行 16 小时长休间隔', () => {
+  initSession(TEST_CAMPAIGN, { hp: 12 });
+  applyRest(TEST_CAMPAIGN, 'long');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 8);
+  assert.throws(() => applyRest(TEST_CAMPAIGN, 'long'), /至少等待 16 小时/);
+  advanceSessionTime(TEST_CAMPAIGN, 16);
+  applyRest(TEST_CAMPAIGN, 'long');
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, 32);
+});
+
+test('state - 预制角色的技能、豁免、攻击和背景数据进入唯一权威存档', () => {
+  const state = initSession(TEST_CAMPAIGN, { preset: 'valen' });
+  const character = state.character;
+  assert.equal(character.background, '士兵 (Soldier)');
+  assert.equal(character.proficiencyBonus, 2);
+  assert.deepEqual(character.savingThrowProficiencies, ['str', 'con']);
+  assert.ok(character.skills['运动']);
+  assert.equal(character.attacks[0].name, '巨剑');
+  assert.ok(character.startingEquipment.includes('链甲'));
 });
 
 test('state - 法术专注受击体质豁免 DC 提示与昏迷自动断专注 (Stage 3.2)', () => {
