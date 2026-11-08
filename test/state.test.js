@@ -229,6 +229,14 @@ test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 
   assert.equal(noWaste.character.hitDice.current, 1, '满血时不应消耗生命骰');
 });
 
+test('state - 资源恢复规则拼写错误在建档时被拒绝', () => {
+  assert.throws(() => initSession(TEST_CAMPAIGN, {
+    name: '错误资源配置',
+    hp: 12,
+    setResource: ['错误资源:0/2:shrot:1']
+  }), /无效职业资源恢复规则/);
+});
+
 test('state - 长休只降低一层力竭，不会自动解除昏迷', () => {
   initSession(TEST_CAMPAIGN, { name: '状态测试者', hp: 12 });
   updateState(TEST_CAMPAIGN, { addCondition: '昏迷' });
