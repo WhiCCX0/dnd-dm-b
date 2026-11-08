@@ -1547,6 +1547,10 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
   }
 
   const requestedMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
+  const deadMembers = requestedMembers.filter(m => getMemberConditions(state, m).includes('死亡'));
+  if (deadMembers.length && (options.who || state.party.length === 1)) {
+    throw new Error(`角色【${deadMembers[0].name}】已死亡，无法通过休整恢复生命（需先复活 --revive）`);
+  }
   const unavailable = requestedMembers.filter(m =>
     getMemberConditions(state, m).includes('死亡') || (m.hp?.current ?? 0) < 1
   );
@@ -1634,9 +1638,11 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
       if (spend > primaryTarget.hitDice.current) {
         throw new Error(`可用生命骰不足 (当前剩余: ${primaryTarget.hitDice.current}/${primaryTarget.hitDice.total})`);
       }
-      const conMod = options.con !== undefined
-        ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
-        : (primaryTarget.abilities?.con !== undefined ? abilityMod(primaryTarget.abilities.con) : null);
+      const conMod = options.heal !== undefined
+        ? 0
+        : (options.con !== undefined
+          ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
+          : (primaryTarget.abilities?.con !== undefined ? abilityMod(primaryTarget.abilities.con) : null));
       if (conMod === null) {
         throw new Error(`角色【${primaryTarget.name}】缺少体质属性；短休消耗生命骰时请提供 --con <体质调整值> 或补全 abilities.con`);
       }
