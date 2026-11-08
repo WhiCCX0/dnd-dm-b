@@ -435,6 +435,14 @@ function regionsMatch(left, right) {
   return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
 }
 
+function parseBooleanOption(value, label) {
+  if (value === true || value === false) return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${label} 必须是 true 或 false，实际: "${value}"`);
+}
+
 function resolveActiveTrackIds(tracksDoc, options = {}) {
   const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
   const customActive = parseCsvList(options.activeTracks);
@@ -1132,7 +1140,7 @@ export function manageNpc(campaignName, options = {}) {
       secret: String(options.secret || '').trim(),
       attitude: options.attitude !== undefined ? Number(options.attitude) : 0,
       locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
-      alive: options.alive !== undefined ? Boolean(options.alive !== 'false' && options.alive !== false) : true,
+      alive: options.alive !== undefined ? parseBooleanOption(options.alive, '--alive') : true,
       visibility: options.visibility || 'public'
     };
     world.npcs.push(npc);
@@ -1160,19 +1168,27 @@ export function manageNpc(campaignName, options = {}) {
     }
     if (options.visibility !== undefined) patch.visibility = options.visibility;
     if (options.alive !== undefined) {
-      patch.alive = options.alive === true || options.alive === 'true';
+      patch.alive = parseBooleanOption(options.alive, '--alive');
     }
 
     const allowLegalRevival = Boolean(options.revive);
     const wasDead = existing.alive === false;
+    if (allowLegalRevival) {
+      if (!wasDead) throw new Error(`NPC "${existing.name}" 尚未死亡，无需执行复活`);
+      if (patch.alive === false) throw new Error('--revive 不能与 --alive false 同时使用');
+      const reason = String(options.reviveReason || options.spell || '').trim();
+      if (!reason) throw new Error('合法复活必须提供 --revive-reason 或 --spell，避免生成无依据的复活记录');
+      patch.alive = true;
+    }
     const updated = updateNpcRecord(existing, patch, { allowLegalRevival });
     world.npcs[idx] = updated;
 
     // SCHEMA 5.2：合法复活已故 NPC 时，自动在 world.ledger 留存政治/宗教余波账本
     if (wasDead && updated.alive === true && allowLegalRevival) {
-      const reasonText = options.reviveReason || options.spell || 'D&D 2024 合法复活法术';
+      const reasonText = String(options.reviveReason || options.spell).trim();
+      const revivePrefix = `led:revive_${updated.id.replace(/[^a-zA-Z0-9_]/g, '_')}_`;
       world.ledger.push({
-        id: `led:revive_${updated.id.replace(/[^a-zA-Z0-9_]/g, '_')}_${world.ledger.length + 1}`,
+        id: nextSequentialId(world.ledger, revivePrefix),
         type: '余波',
         summary: `已故人物【${updated.name}】经由「${reasonText}」死而复生，引发教会、债主或相关势力的关注与震动`,
         source: 'NPC合法复活事件',
