@@ -61,6 +61,26 @@ const colors = {
   red: useColor ? '\x1b[31m' : ''
 };
 
+/** Remove GM-only records and NPC secrets from player-facing result payloads. */
+export function projectPlayerResult(value, { gm = false } = {}) {
+  if (gm) return value;
+  const visit = (item) => {
+    if (Array.isArray(item)) {
+      return item.filter(entry => !entry || entry.visibility !== 'secret').map(visit);
+    }
+    if (!item || typeof item !== 'object') return item;
+    if (item.visibility === 'secret') return undefined;
+    const projected = {};
+    for (const [key, nested] of Object.entries(item)) {
+      if (key === 'secret') continue;
+      const safe = visit(nested);
+      if (safe !== undefined) projected[key] = safe;
+    }
+    return projected;
+  };
+  return visit(value);
+}
+
 const TABLE_ALIASES = Object.freeze({
   rumors: 'rumor',
   npcs: 'npc',
@@ -193,6 +213,7 @@ export function getWorld(campaignName) {
   }
   const raw = fs.readFileSync(worldPath, 'utf8');
   const worldDoc = JSON.parse(raw);
+  if (!Array.isArray(worldDoc.eventHistory)) worldDoc.eventHistory = [];
   validateWorldDoc(worldDoc);
   return worldDoc;
 }
@@ -335,6 +356,9 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
     }
 
     events.push({
+      id: `evt:${tickTimestamp}:${clk.id}`,
+      type: 'clock_tick',
+      recordedAt: tickTimestamp,
       clockId: clk.id,
       clockName: clk.name,
       kind: clk.kind,
@@ -351,9 +375,14 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
 
     if (clk.kind === 'track' && clk.current > before) {
       const triggered = applyTrackLinkagesForStep(nextWorld, clk.id, before, clk.current, tickTimestamp, tracksDoc);
-      for (const le of triggered) {
-        linkageEvents.push(le);
-        events.push(le);
+      for (const [linkIndex, le] of triggered.entries()) {
+        const recorded = {
+          ...le,
+          id: `evt:${tickTimestamp}:${le.linkageId || 'link'}:${linkIndex + 1}`,
+          recordedAt: tickTimestamp
+        };
+        linkageEvents.push(recorded);
+        events.push(recorded);
       }
     }
   }
@@ -363,6 +392,10 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
   const overdueLedger = nextWorld.ledger.filter(
     item => item.status !== '了结' && item.dueAt && toTotalHours(item.dueAt) <= targetHours
   );
+  nextWorld.eventHistory = [
+    ...(nextWorld.eventHistory || []),
+    ...events
+  ].slice(-500);
 
   return {
     world: nextWorld,
@@ -639,7 +672,8 @@ export function defaultWorldDoc(options = {}) {
     clocks,
     ledger,
     canon,
-    rumors: []
+    rumors: [],
+    eventHistory: []
   };
 
   validateWorldDoc(worldDoc);
@@ -1004,6 +1038,7 @@ export function manageNpc(campaignName, options = {}) {
       voice: options.voice || tpl.voice || '沉稳简短',
       desire: options.desire || tpl.desire || '保全自身生计',
       fear: options.fear || tpl.fear || '旧账败露',
+      role: options.role || tpl.role || '居民',
       secret: options.secret || tpl.secret || '暂无深层底牌',
       attitude: options.attitude !== undefined ? Number(options.attitude) : (tpl.defaultAttitude ?? 0),
       locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
@@ -1014,8 +1049,8 @@ export function manageNpc(campaignName, options = {}) {
     saveWorld(campaignName, world);
 
     const visibleWorld = filterPlayerVisible(world, { gm: Boolean(options.gm) });
-    const visibleNpc = visibleWorld.npcs.find(n => n.id === npc.id) || npc;
-    return { action: 'generate', npc: options.gm ? npc : visibleNpc, world };
+    const visibleNpc = visibleWorld.npcs.find(n => n.id === npc.id) || null;
+    return { action: 'generate', npc: visibleNpc, hidden: !visibleNpc, world: visibleWorld };
   }
 
   if (options.add) {
@@ -1029,6 +1064,7 @@ export function manageNpc(campaignName, options = {}) {
       voice: String(options.voice || '平实温和').trim(),
       desire: String(options.desire || '维持现状').trim(),
       fear: String(options.fear || '卷入争端').trim(),
+      role: String(options.role || '居民').trim(),
       secret: String(options.secret || '').trim(),
       attitude: options.attitude !== undefined ? Number(options.attitude) : 0,
       locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
@@ -1052,6 +1088,7 @@ export function manageNpc(campaignName, options = {}) {
     if (options.voice !== undefined) patch.voice = options.voice;
     if (options.desire !== undefined) patch.desire = options.desire;
     if (options.fear !== undefined) patch.fear = options.fear;
+    if (options.role !== undefined) patch.role = options.role;
     if (options.secret !== undefined) patch.secret = options.secret;
     if (options.attitude !== undefined) patch.attitude = Number(options.attitude);
     if (options.locationId !== undefined || options.location !== undefined) {
@@ -1117,12 +1154,15 @@ export function manageRumor(campaignName, options = {}) {
     if (!text) {
       throw new Error('新增传闻须提供 --text');
     }
+    const locationId = options.locationId || options.location || null;
+    const location = world.locations.find(loc => loc.id === locationId || loc.name === locationId);
     const rumor = {
       id,
       text,
       credibility: options.credibility || '半真半假',
       tier,
-      locationId: options.locationId || options.location || null,
+      locationId,
+      region: options.region || location?.region || world.meta?.region || null,
       visibility: options.visibility || 'rumor'
     };
     world.rumors.push(rumor);
@@ -1133,11 +1173,8 @@ export function manageRumor(campaignName, options = {}) {
   if (options.draw) {
     let maxTier = options.maxTier || options.tier || null;
     const locId = options.locationId || options.location;
-    if (!maxTier && locId) {
-      const loc = world.locations.find(l => l.id === locId || l.name === locId);
-      if (loc) maxTier = loc.tier;
-      else maxTier = '凡俗';
-    }
+    const location = locId ? world.locations.find(l => l.id === locId || l.name === locId) : null;
+    if (!maxTier && locId) maxTier = location?.tier || '凡俗';
     if (!maxTier) maxTier = '文明';
 
     const maxTierIdx = TIER_LEVELS.indexOf(maxTier);
@@ -1147,10 +1184,18 @@ export function manageRumor(campaignName, options = {}) {
 
     const tablesDoc = loadTablesDoc(options.tablesFile);
     const group = resolveTableGroup(tablesDoc, 'rumor');
-    const eligiblePool = group.entries.filter(e => {
+    const tierPool = group.entries.filter(e => {
       const idx = TIER_LEVELS.indexOf(e.tier || '凡俗');
       return idx !== -1 && idx <= maxTierIdx;
     });
+    const currentRegion = location?.region || world.meta?.region || null;
+    const regionalPool = currentRegion
+      ? tierPool.filter(entry => entry.region && String(entry.region).trim() === String(currentRegion).trim())
+      : [];
+    const globalPool = tierPool.filter(entry => !entry.region);
+    const eligiblePool = regionalPool.length > 0
+      ? regionalPool
+      : (globalPool.length > 0 ? globalPool : tierPool);
 
     if (eligiblePool.length === 0) {
       throw new Error(`当前认知层级上限 [${maxTier}] 下无可用传闻条目`);
@@ -1168,6 +1213,7 @@ export function manageRumor(campaignName, options = {}) {
         credibility: picked.credibility || '半真半假',
         tier: picked.tier || '凡俗',
         locationId: locId || null,
+        region: picked.region || currentRegion || null,
         visibility: 'rumor'
       };
       world.rumors.push(rumorEntry);
@@ -1181,6 +1227,15 @@ export function manageRumor(campaignName, options = {}) {
   let list = view.rumors;
   if (options.tier) {
     list = list.filter(r => r.tier === options.tier);
+  }
+  const locId = options.locationId || options.location;
+  if (locId) {
+    const location = world.locations.find(loc => loc.id === locId || loc.name === locId);
+    const region = location?.region || world.meta?.region || null;
+    list = list.filter(r =>
+      r.locationId === locId || r.locationId === location?.id ||
+      (region && r.region === region) || (!r.locationId && !r.region)
+    );
   }
   return { action: 'list', rumors: list, world: view };
 }
@@ -1235,6 +1290,7 @@ export function runOracle(campaignName, options = {}) {
   const drawRes = drawIndexWithRng(world.rng, group.entries.length);
   world.rng = drawRes.nextRng;
   const entry = group.entries[drawRes.index];
+  const hiddenEntry = entry.visibility === 'secret' && !options.gm;
 
   saveWorld(campaignName, world);
 
@@ -1246,9 +1302,9 @@ export function runOracle(campaignName, options = {}) {
     answer,
     tableKey: group.tableKey,
     tableName: group.name,
-    entry,
-    omen: entry.text || entry.sign || entry.title || JSON.stringify(entry),
-    world
+    entry: hiddenEntry ? null : entry,
+    omen: hiddenEntry ? '（隐藏结果）' : (entry.text || entry.sign || entry.title || JSON.stringify(entry)),
+    world: filterPlayerVisible(world, { gm: Boolean(options.gm) })
   };
 }
 
@@ -1345,6 +1401,7 @@ export function parseWorldCliArgs(args) {
     else if (arg === '--voice') options.voice = requireVal(i++, '--voice');
     else if (arg === '--desire') options.desire = requireVal(i++, '--desire');
     else if (arg === '--fear') options.fear = requireVal(i++, '--fear');
+    else if (arg === '--role') options.role = requireVal(i++, '--role');
     else if (arg === '--secret') options.secret = requireVal(i++, '--secret');
     else if (arg === '--attitude') options.attitude = requireVal(i++, '--attitude');
     else if (arg === '--location' || arg === '--location-id') {
