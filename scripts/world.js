@@ -429,6 +429,12 @@ function nextSequentialId(records, prefix) {
   return `${prefix}${sequence}`;
 }
 
+function regionsMatch(left, right) {
+  const a = String(left || '').trim();
+  const b = String(right || '').trim();
+  return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
+}
+
 function resolveActiveTrackIds(tracksDoc, options = {}) {
   const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
   const customActive = parseCsvList(options.activeTracks);
@@ -1221,7 +1227,7 @@ export function manageRumor(campaignName, options = {}) {
     });
     const currentRegion = location?.region || world.meta?.region || null;
     const regionalPool = currentRegion
-      ? tierPool.filter(entry => entry.region && String(entry.region).trim() === String(currentRegion).trim())
+      ? tierPool.filter(entry => regionsMatch(entry.region, currentRegion))
       : [];
     const globalPool = tierPool.filter(entry => !entry.region);
     const eligiblePool = regionalPool.length > 0
@@ -1268,7 +1274,7 @@ export function manageRumor(campaignName, options = {}) {
     const region = location?.region || world.meta?.region || null;
     list = list.filter(r =>
       r.locationId === locId || r.locationId === location?.id ||
-      (region && r.region === region) || (!r.locationId && !r.region)
+      (region && regionsMatch(r.region, region)) || (!r.locationId && !r.region)
     );
   }
   return { action: 'list', rumors: list, world: view };
