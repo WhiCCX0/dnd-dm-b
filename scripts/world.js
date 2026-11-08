@@ -384,7 +384,7 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
       for (const [linkIndex, le] of triggered.entries()) {
         const recorded = {
           ...le,
-          id: `evt:${tickTimestamp}:link:${fromClockId}:${le.linkageId || 'link'}:${linkIndex + 1}`,
+          id: `evt:${tickTimestamp}:link:${clk.id}:${le.linkageId || 'link'}:${linkIndex + 1}`,
           recordedAt: tickTimestamp
         };
         linkageEvents.push(recorded);
