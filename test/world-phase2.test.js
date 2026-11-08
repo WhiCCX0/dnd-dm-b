@@ -22,7 +22,8 @@ import {
   manageCanon,
   manageNpc,
   manageRumor,
-  runOracle
+  runOracle,
+  projectPlayerResult
 } from '../scripts/world.js';
 
 import {
@@ -499,6 +500,106 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     ['铅灰冻雨夹杂细碎火山灰', '逆风吹来带着硫磺味的暖雾'].includes(customDraw.entry.text),
     '新增表不改代码即可通过 oracle --table 直接抽取'
   );
+});
+
+test('world - GM 密档投影会过滤嵌套秘密记录、NPC secret 与隐藏事件', () => {
+  const projected = projectPlayerResult({
+    world: {
+      npcs: [
+        { id: 'npc:public', name: '公开人物', secret: '不应显示', visibility: 'public' },
+        { id: 'npc:hidden', name: '秘密人物', secret: '秘密', visibility: 'secret' }
+      ],
+      eventHistory: [
+        { id: 'evt:public', summary: '公开事件', visibility: 'public' },
+        { id: 'evt:hidden', summary: '隐藏事件', visibility: 'secret' }
+      ]
+    },
+    npc: { id: 'npc:hidden', name: '秘密人物', secret: '秘密', visibility: 'secret' }
+  });
+  const serialized = JSON.stringify(projected);
+  assert.equal(serialized.includes('秘密人物'), false);
+  assert.equal(serialized.includes('不应显示'), false);
+  assert.equal(serialized.includes('隐藏事件'), false);
+  assert.equal(projected.world.npcs.length, 1);
+  assert.equal(projected.world.npcs[0].secret, undefined);
+  assert.equal(projected.npc, undefined);
+});
+
+test('world - 时间推进事件持久化到 eventHistory，并保留可追踪 ID 与时间', () => {
+  const campaign = 'world-event-history';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108, intensity: 'fast' });
+  const advanced = runWorldTime(campaign, { advance: '30d' });
+  const saved = getWorld(campaign);
+  assert.ok(advanced.events.length > 0, '30 天推进应触发至少一个默认演化时钟');
+  assert.equal(saved.eventHistory.length, advanced.events.length);
+  assert.ok(saved.eventHistory.every(event => event.id && event.recordedAt));
+  assert.deepEqual(saved.eventHistory, advanced.world.eventHistory);
+});
+
+test('world - 玩家 CLI 的 JSON 输出不泄露 secret NPC；GM 模式仍可读取密档', () => {
+  const campaign = 'world-secret-cli';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageNpc(campaign, {
+    add: true,
+    id: 'npc:secret_guardian',
+    name: '密档守门人',
+    role: '秘密守卫',
+    secret: '黑曜石密钥藏在圣坛之下',
+    visibility: 'secret'
+  });
+
+  const run = (extraArgs = []) => spawnSync(process.execPath, [
+    WORLD_SCRIPT, 'npc', campaign, '--list', '--json', ...extraArgs
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  const player = run();
+  assert.equal(player.status, 0, player.stderr);
+  assert.equal(player.stdout.includes('密档守门人'), false);
+  assert.equal(player.stdout.includes('黑曜石密钥'), false);
+
+  const gm = run(['--gm']);
+  assert.equal(gm.status, 0, gm.stderr);
+  assert.equal(gm.stdout.includes('密档守门人'), true);
+  assert.equal(gm.stdout.includes('黑曜石密钥'), true);
+});
+
+test('world - NPC 抽表保留模板 role，传闻优先匹配当前地区并保留地区信息', () => {
+  const campaign = 'world-region-rumors';
+  cleanCampaign(campaign);
+  initWorld(campaign, {
+    seed: 20261108,
+    region: '灰岩十一邦',
+    location: '灰岩外城圣赎街'
+  });
+  const npc = manageNpc(campaign, { generate: true }).npc;
+  assert.equal(typeof npc.role, 'string');
+  assert.ok(npc.role.length > 0);
+
+  const customTables = path.join(TEMP_SESSIONS_DIR, 'regional-rumors.json');
+  fs.writeFileSync(customTables, JSON.stringify({
+    tables: {
+      rumor: {
+        name: '地区传闻测试',
+        entries: [
+          { id: 'rum:regional', text: '灰岩圣赎街的井水变成银色', tier: '凡俗', region: '灰岩十一邦' },
+          { id: 'rum:other', text: '万门海湾出现黑帆舰队', tier: '凡俗', region: '铁锚自由同盟与万门海湾' },
+          { id: 'rum:global', text: '北方商道的粮价上涨', tier: '凡俗' }
+        ]
+      }
+    }
+  }), 'utf8');
+  const drawn = manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    tablesFile: customTables
+  });
+  assert.equal(drawn.rumor.id, 'rum:regional');
+  assert.equal(drawn.rumor.region, '灰岩十一邦');
 });
 
 test('phase2 (state.js rest 联动与模式隔离) - mode: "D" 短休/长休原子推进 world.json 时间，非 D 模式行为 100% 不变', () => {
