@@ -229,6 +229,17 @@ test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 
   assert.equal(noWaste.character.hitDice.current, 1, '满血时不应消耗生命骰');
 });
 
+test('state - 长休只降低一层力竭，不会自动解除昏迷', () => {
+  initSession(TEST_CAMPAIGN, { name: '状态测试者', hp: 12 });
+  updateState(TEST_CAMPAIGN, { addCondition: '昏迷' });
+  updateState(TEST_CAMPAIGN, { addCondition: '力竭 2' });
+
+  const rested = applyRest(TEST_CAMPAIGN, 'long');
+  assert.ok(rested.character.conditions.includes('昏迷'), '长休不能擅自解除由法术或其他效果造成的昏迷');
+  assert.ok(rested.character.conditions.includes('力竭 1'), '长休只降低一层力竭');
+  assert.equal(rested.character.conditions.includes('力竭 2'), false);
+});
+
 test('state - 长休按资源恢复规则结算：短休资源全恢复、长休定量资源递增、非休息资源不变', () => {
   initSession(TEST_CAMPAIGN, {
     name: '资源测试者',
