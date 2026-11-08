@@ -637,16 +637,19 @@ function ensurePartyStructure(state) {
     }
   }
 
-  if (!state.clock || typeof state.clock !== 'object') {
+  if (state.clock === undefined) {
+    // 兼容引入累计游戏时钟之前的旧存档。
     state.clock = { elapsedHours: 0 };
-  } else if (state.clock.elapsedHours === undefined) {
-    state.clock.elapsedHours = 0;
+  } else if (!state.clock || typeof state.clock !== 'object' || Array.isArray(state.clock)) {
+    throw new Error('战役游戏时钟损坏：clock 必须为对象；拒绝静默重置以免绕过休息间隔');
   } else if (!Number.isSafeInteger(state.clock.elapsedHours) || state.clock.elapsedHours < 0) {
     throw new Error('战役游戏时钟损坏：clock.elapsedHours 必须是非负安全整数；拒绝静默重置以免绕过休息间隔');
   }
 
-  if (!state.restState || typeof state.restState !== 'object') {
+  if (state.restState === undefined) {
     state.restState = { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null };
+  } else if (!state.restState || typeof state.restState !== 'object' || Array.isArray(state.restState)) {
+    throw new Error('战役休息记录损坏：restState 必须为对象；拒绝静默重置以免绕过休息间隔');
   } else {
     if (state.restState.lastLongRestCompletedAtHour === undefined) {
       state.restState.lastLongRestCompletedAtHour = null;
