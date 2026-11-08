@@ -1620,7 +1620,7 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
 
       const nextConditions = [];
       for (const c of conds) {
-        if (['浴血', '昏迷', '稳定', '力竭', '力竭 1', '力竭1'].includes(c)) {
+        if (['浴血', '稳定', '力竭', '力竭 1', '力竭1'].includes(c)) {
           continue;
         }
         const exhMatch = c.match(/^力竭\s*(\d+)$/);
