@@ -513,6 +513,57 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
   );
 });
 
+test('world - 玩家态 canon 冲突只返回存在性，不泄露 GM 密档的事实值', () => {
+  const campaign = 'world-canon-secret-conflict';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageCanon(campaign, {
+    add: true,
+    id: 'canon:secret_controller',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '密档中的黑烛内庭',
+    status: '定论',
+    visibility: 'secret',
+    gm: true
+  });
+
+  const playerCheck = manageCanon(campaign, {
+    check: true,
+    id: 'canon:public_controller',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '公开的港务行会',
+    status: '定论',
+    visibility: 'public'
+  });
+  assert.equal(playerCheck.conflict, true);
+  assert.equal(JSON.stringify(playerCheck).includes('密档中的黑烛内庭'), false);
+  assert.equal(JSON.stringify(playerCheck).includes('canon:secret_controller'), false);
+
+  const secretCandidateCheck = manageCanon(campaign, {
+    check: true,
+    id: 'canon:secret_unrelated',
+    entityId: 'loc:greyhaven',
+    predicate: '地下通道',
+    value: '通往旧王陵',
+    status: '定论',
+    visibility: 'secret'
+  });
+  assert.equal(secretCandidateCheck.conflict, false, '秘密候选本身不能被错误报告为冲突');
+  assert.equal(JSON.stringify(secretCandidateCheck).includes('通往旧王陵'), false);
+
+  assert.throws(() => manageCanon(campaign, {
+    add: true,
+    id: 'canon:public_conflict',
+    entityId: 'loc:greyhaven',
+    predicate: '实际控制者',
+    value: '另一个公开势力',
+    status: '定论',
+    visibility: 'public'
+  }), /GM 密档或公开事实/);
+});
+
 test('world - 跨线联动继承来源与目标中更严格的可见级别', () => {
   const world = {
     calendar: { era: '剑火纪', year: 142, month: 1, day: 1, hour: 8 },
