@@ -841,7 +841,8 @@ export function manageClock(campaignName, options = {}) {
   const linkageEvents = [];
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `clk:${Date.now()}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.clocks, 'clk:');
+    if (!id) throw new Error('时钟 ID 不得为空');
     if (world.clocks.some(c => c.id === id)) {
       throw new Error(`时钟 ID "${id}" 已存在`);
     }
@@ -930,7 +931,8 @@ export function manageLedger(campaignName, options = {}) {
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `led:${world.ledger.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.ledger, 'led:');
+    if (!id) throw new Error('账本 ID 不得为空');
     if (world.ledger.some(l => l.id === id)) {
       throw new Error(`账本 ID "${id}" 已存在`);
     }
@@ -1014,7 +1016,7 @@ export function manageCanon(campaignName, options = {}) {
 
   if (options.check || options.add) {
     const candidate = {
-      id: options.id ? String(options.id).trim() : `canon:${world.canon.length + 1}`,
+      id: options.id ? String(options.id).trim() : nextSequentialId(world.canon, 'canon:'),
       entityId: String(options.entityId || options.entity || '').trim(),
       predicate: String(options.predicate || '').trim(),
       value: options.value,
@@ -1025,6 +1027,7 @@ export function manageCanon(campaignName, options = {}) {
       visibility: options.visibility || 'public'
     };
 
+    if (!candidate.id) throw new Error('canon ID 不得为空');
     if (options.check) {
       const checkRes = checkCanonConflict(world.canon, candidate);
       if (!options.gm) {
@@ -1110,7 +1113,7 @@ export function manageNpc(campaignName, options = {}) {
       role: options.role || tpl.role || '居民',
       secret: options.secret || tpl.secret || '暂无深层底牌',
       attitude: options.attitude !== undefined ? Number(options.attitude) : (tpl.defaultAttitude ?? 0),
-      locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
+      locationId: options.locationId || options.location || world.locations[0]?.id || null,
       alive: true,
       visibility: options.visibility || 'public'
     };
@@ -1137,7 +1140,7 @@ export function manageNpc(campaignName, options = {}) {
       role: String(options.role || '居民').trim(),
       secret: String(options.secret || '').trim(),
       attitude: options.attitude !== undefined ? Number(options.attitude) : 0,
-      locationId: options.locationId || options.location || world.locations[0]?.id || 'loc:greyhaven',
+      locationId: options.locationId || options.location || world.locations[0]?.id || null,
       alive: options.alive !== undefined ? parseBooleanOption(options.alive, '--alive') : true,
       visibility: options.visibility || 'public'
     };
@@ -1293,7 +1296,7 @@ export function manageRumor(campaignName, options = {}) {
     let rumorEntry = world.rumors.find(r => r.id === picked.id);
     if (!rumorEntry) {
       rumorEntry = {
-        id: picked.id || `rum:draw_${world.rumors.length + 1}`,
+        id: picked.id || nextSequentialId(world.rumors, 'rum:draw_'),
         text: picked.text,
         credibility: picked.credibility || '半真半假',
         tier: picked.tier || '凡俗',
