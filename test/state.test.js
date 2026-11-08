@@ -229,6 +229,27 @@ test('state - 休息门禁：0 HP 与战斗中禁止休息，短休自动读取 
   assert.equal(noWaste.character.hitDice.current, 1, '满血时不应消耗生命骰');
 });
 
+test('state - 长休按资源恢复规则结算：短休资源全恢复、长休定量资源递增、非休息资源不变', () => {
+  initSession(TEST_CAMPAIGN, {
+    name: '资源测试者',
+    class: '战士',
+    hp: 12,
+    setResource: [
+      '短休资源:0/3:short:1',
+      '长休定量资源:0/3:long:1',
+      '长休全恢复资源:0/3:long:all',
+      '不恢复资源:0/3:never'
+    ]
+  });
+
+  applyRest(TEST_CAMPAIGN, 'long');
+  const resources = getState(TEST_CAMPAIGN).character.resources;
+  assert.equal(resources['短休资源'].current, 3, '长休也应恢复短休资源');
+  assert.equal(resources['长休定量资源'].current, 1, 'long:1 只恢复 1 点');
+  assert.equal(resources['长休全恢复资源'].current, 3, 'long:all 恢复至上限');
+  assert.equal(resources['不恢复资源'].current, 0, '未知/非休息恢复规则不得被强行重置');
+});
+
 test('state - 非 D 模式累计游戏时钟执行 16 小时长休间隔', () => {
   initSession(TEST_CAMPAIGN, { hp: 12 });
   applyRest(TEST_CAMPAIGN, 'long');
