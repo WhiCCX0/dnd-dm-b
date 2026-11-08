@@ -451,6 +451,16 @@ export function validateWorldDoc(worldDoc) {
       throw new Error(`world.json.${arrKey} 必须为数组`);
     }
   }
+  if (worldDoc.eventHistory !== undefined && !Array.isArray(worldDoc.eventHistory)) {
+    throw new Error('world.json.eventHistory 必须为数组');
+  }
+  for (const [index, event] of (worldDoc.eventHistory || []).entries()) {
+    if (!event || typeof event !== 'object' || typeof event.id !== 'string' || !event.id.trim()) {
+      throw new Error(`world.json.eventHistory[${index}] 必须包含非空字符串 id`);
+    }
+    if (event.recordedAt !== undefined) toTotalHours(event.recordedAt);
+    if (event.visibility !== undefined) validateVisibility(event.visibility, `event(${event.id})`);
+  }
 
   for (const loc of worldDoc.locations) {
     if (!TIER_LEVELS.includes(loc.tier)) {
@@ -465,6 +475,9 @@ export function validateWorldDoc(worldDoc) {
     }
     if (typeof npc.alive !== 'boolean') {
       throw new Error(`NPC "${npc.id}" 的 alive 必须为布尔值`);
+    }
+    if (npc.role !== undefined && typeof npc.role !== 'string') {
+      throw new Error(`NPC "${npc.id}" 的 role 必须为字符串`);
     }
     validateVisibility(npc.visibility, `npc(${npc.id})`);
   }
@@ -524,6 +537,7 @@ export function filterPlayerVisible(worldDoc, { gm = false } = {}) {
   copy.ledger = copy.ledger.filter(isVisible);
   copy.canon = copy.canon.filter(isVisible);
   copy.rumors = copy.rumors.filter(isVisible);
+  copy.eventHistory = (copy.eventHistory || []).filter(isVisible);
   copy.npcs = copy.npcs.filter(isVisible).map((npc) => {
     const rest = { ...npc };
     delete rest.secret;
