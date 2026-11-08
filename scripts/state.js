@@ -1179,7 +1179,7 @@ export function updateState(campaignName, updates = {}) {
           if (sIdx !== -1) conditions.splice(sIdx, 1);
           logs.push(`${whoPrefix}承受巨额溢伤 (${overflowDamage} >= HP上限 ${hp.max})，角色当场【死亡】！`);
         } else if (prevHp === 0 && damage > 0 && !conditions.includes('死亡')) {
-          // Any damage while at 0 HP causes a death save failure, even if temporary HP absorbs it.(s)
+          // Any damage while at 0 HP causes a death save failure, even if temporary HP absorbs it.
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) {
             conditions.splice(sIdx, 1);
@@ -1537,6 +1537,23 @@ export function updateState(campaignName, updates = {}) {
   return saveState(campaignName, state);
 }
 
+function recoverResourceAfterLongRest(resource) {
+  if (!resource || typeof resource !== 'object') return resource?.current;
+  const current = resource.current;
+  const max = resource.max;
+  if (!Number.isSafeInteger(current) || !Number.isSafeInteger(max) || current < 0 || max < current) {
+    throw new Error('职业资源状态非法：current/max 必须为非负整数且 current 不得超过 max');
+  }
+
+  const recovery = String(resource.recovery || 'long:all').trim().toLowerCase();
+  const [cadence, amount = 'all'] = recovery.split(':');
+  if (cadence === 'short') return max;
+  if (cadence !== 'long') return current;
+  if (amount === 'all') return max;
+  if (!/^\d+$/.test(amount)) return current;
+  return Math.min(max, current + Number(amount));
+}
+
 function mutateStateForRest(state, restType = 'short', options = {}) {
   clearEphemeralDeltas(state);
   if (!['short', 'long'].includes(restType)) {
@@ -1590,9 +1607,15 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         delete char.spellSlots[lvl].lastDelta;
       }
 
-      for (const res of Object.values(char.resources || {})) {
-        res.current = res.max;
-        delete res.lastDelta;
+      for (const [resourceName, resource] of Object.entries(char.resources || {})) {
+        const before = resource?.current;
+        const next = recoverResourceAfterLongRest(resource);
+        if (next !== undefined && next > before) {
+          resource.current = next;
+          resource.lastDelta = `+${next - before} 长休恢复`;
+        } else if (resource && typeof resource === 'object') {
+          delete resource.lastDelta;
+        }
       }
 
       const nextConditions = [];
