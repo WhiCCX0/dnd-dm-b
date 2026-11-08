@@ -279,6 +279,12 @@ export function applyTrackLinkagesForStep(worldDoc, fromClockId, beforeVal, afte
       if (completed) {
         targetClk.status = 'completed';
       }
+      const sourceClock = worldDoc.clocks.find(clock => clock.id === fromClockId);
+      const sourceVisibility = sourceClock?.visibility || 'public';
+      const targetVisibility = targetClk.visibility || 'public';
+      const visibility = VISIBILITY_LEVELS[
+        Math.max(VISIBILITY_LEVELS.indexOf(sourceVisibility), VISIBILITY_LEVELS.indexOf(targetVisibility))
+      ] || 'secret';
       linkageEvents.push({
         type: 'track_linkage',
         linkageId: rule.id,
@@ -296,7 +302,7 @@ export function applyTrackLinkagesForStep(worldDoc, fromClockId, beforeVal, afte
         max: targetClk.max,
         completed,
         summary: rule.summary,
-        visibility: targetClk.visibility
+        visibility
       });
     }
   }
@@ -378,7 +384,7 @@ export function advanceWorldTimeWithTracks(worldDoc, durationSpec, tracksDoc = l
       for (const [linkIndex, le] of triggered.entries()) {
         const recorded = {
           ...le,
-          id: `evt:${tickTimestamp}:${le.linkageId || 'link'}:${linkIndex + 1}`,
+          id: `evt:${tickTimestamp}:link:${fromClockId}:${le.linkageId || 'link'}:${linkIndex + 1}`,
           recordedAt: tickTimestamp
         };
         linkageEvents.push(recorded);
@@ -416,11 +422,27 @@ function parseCsvList(raw) {
   return String(raw).split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
 }
 
+function nextSequentialId(records, prefix) {
+  const existing = new Set(records.map(record => record.id));
+  let sequence = records.length + 1;
+  while (existing.has(`${prefix}${sequence}`)) sequence += 1;
+  return `${prefix}${sequence}`;
+}
+
 function resolveActiveTrackIds(tracksDoc, options = {}) {
   const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
   const customActive = parseCsvList(options.activeTracks);
-  if (customActive.length >= 3 && customActive.length <= 4) {
-    return new Set(customActive);
+  if (options.activeTracks !== undefined) {
+    const uniqueActive = [...new Set(customActive)];
+    if (uniqueActive.length < 3 || uniqueActive.length > 4) {
+      throw new Error('--active-tracks 必须指定 3 至 4 条不同的演化线');
+    }
+    const knownTracks = new Set(allTracks.flatMap(track => [track.id, track.name]));
+    const unknown = uniqueActive.filter(track => !knownTracks.has(track));
+    if (unknown.length) {
+      throw new Error(`--active-tracks 包含未知演化线: ${unknown.join(', ')}`);
+    }
+    return new Set(uniqueActive);
   }
 
   const regionTracks = tracksDoc?.regionTracks || {};
