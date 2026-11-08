@@ -1,5 +1,7 @@
 import fs from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 const packageJson = JSON.parse(
   fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -31,7 +33,10 @@ export function createFts5UnsupportedError(cause) {
 export function assertFts5Support() {
   let db;
   try {
-    db = withSqliteWarningSuppressed(() => new DatabaseSync(':memory:'));
+    db = withSqliteWarningSuppressed(() => {
+      const { DatabaseSync } = require('node:sqlite');
+      return new DatabaseSync(':memory:');
+    });
     db.exec('CREATE VIRTUAL TABLE fts5_capability_probe USING fts5(content)');
     return true;
   } catch (error) {
