@@ -511,6 +511,30 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     ['铅灰冻雨夹杂细碎火山灰', '逆风吹来带着硫磺味的暖雾'].includes(customDraw.entry.text),
     '新增表不改代码即可通过 oracle --table 直接抽取'
   );
+
+  baseTables.tables.secret_field_test = {
+    name: '秘密字段投影测试',
+    entries: [{
+      id: 'secret-field-entry',
+      text: '玩家可见的征兆',
+      secret: 'GM 不可公开的解释'
+    }]
+  };
+  fs.writeFileSync(tmpTablesFile, JSON.stringify(baseTables, null, 2), 'utf8');
+  const playerOmen = runOracle(campaign, {
+    table: 'secret_field_test',
+    tablesFile: tmpTablesFile
+  });
+  assert.equal(playerOmen.entry.secret, undefined);
+  assert.equal(playerOmen.omen.includes('GM 不可公开的解释'), false);
+  assert.equal(JSON.stringify(playerOmen).includes('GM 不可公开的解释'), false);
+
+  const gmOmen = runOracle(campaign, {
+    table: 'secret_field_test',
+    tablesFile: tmpTablesFile,
+    gm: true
+  });
+  assert.equal(gmOmen.entry.secret, 'GM 不可公开的解释');
 });
 
 test('world - 玩家态 canon 冲突只返回存在性，不泄露 GM 密档的事实值', () => {
