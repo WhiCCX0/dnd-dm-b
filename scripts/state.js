@@ -1247,21 +1247,28 @@ export function updateState(campaignName, updates = {}) {
           if (sIdx !== -1) conditions.splice(sIdx, 1);
           logs.push(`${whoPrefix}承受巨额溢伤 (${overflowDamage} >= HP上限 ${hp.max})，角色当场【死亡】！`);
         } else if (prevHp === 0 && damage > 0 && !conditions.includes('死亡')) {
-          // Any damage while at 0 HP causes a death save failure, even if temporary HP absorbs it.
+          // At 0 HP, raw damage at least equal to max HP causes instant death,
+          // even when temporary HP absorbs the damage.
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) {
             conditions.splice(sIdx, 1);
             logs.push(`${whoPrefix}在稳定状态下受击，脱离【稳定】状态`);
           }
-          const failAdded = updates.crit ? 2 : 1;
-          member.deathSaves.failures = Math.min(3, member.deathSaves.failures + failAdded);
-          logs.push(`${whoPrefix}0 HP 状态下受击，死亡豁免失败 +${failAdded} (累计失败: ${member.deathSaves.failures}/3)`);
-          if (member.deathSaves.failures >= 3) {
+          if (damage >= hp.max) {
             member.deathSaves.failures = 3;
-            if (!conditions.includes('死亡')) {
-              conditions.push('死亡');
+            conditions.push('死亡');
+            logs.push(`${whoPrefix}在 0 HP 时承受 ${damage} 点伤害（达到 HP 上限 ${hp.max}），当场【死亡】！`);
+          } else {
+            const failAdded = updates.crit ? 2 : 1;
+            member.deathSaves.failures = Math.min(3, member.deathSaves.failures + failAdded);
+            logs.push(`${whoPrefix}0 HP 状态下受击，死亡豁免失败 +${failAdded} (累计失败: ${member.deathSaves.failures}/3)`);
+            if (member.deathSaves.failures >= 3) {
+              member.deathSaves.failures = 3;
+              if (!conditions.includes('死亡')) {
+                conditions.push('死亡');
+              }
+              logs.push(`${whoPrefix}死亡豁免累计 3 次失败，角色【死亡】！`);
             }
-            logs.push(`${whoPrefix}死亡豁免累计 3 次失败，角色【死亡】！`);
           }
         }
 
