@@ -2729,6 +2729,23 @@ function main() {
       const state = applyRest(campaign, restType, options);
       console.log(`${colors.green}✓ 战役 "${campaign}" 完成${restType === 'long' ? '长休' : '短休'}！${colors.reset}\n`);
       console.log(generateHud(state, 'line', { veil: options.veil }));
+
+      if (state.worldAdvance) {
+        const advance = state.worldAdvance;
+        console.log(`\n📅 世界时间: ${advance.restStartedAt} → ${advance.restCompletedAt} (+${advance.deltaHours}h)`);
+        for (const event of advance.events || []) {
+          const title = event.summary || event.clockName || event.name || event.type || '世界事件';
+          const progress = Number.isSafeInteger(event.max)
+            ? ` (${event.before}->${event.after}/${event.max})`
+            : '';
+          console.log(`  ⏱️ ${title}${progress}`);
+        }
+        for (const item of advance.overdueLedger || []) {
+          console.log(`  ⚠️ 逾期: ${item.summary}`);
+        }
+      } else if (state.clock) {
+        console.log(`\n⌛ 游戏时间累计: ${state.clock.elapsedHours} 小时`);
+      }
     } else if (command === 'next') {
       const state = advanceTurn(campaign);
       if (state.status.initWarning) {
