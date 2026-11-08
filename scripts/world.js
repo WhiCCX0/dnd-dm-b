@@ -439,16 +439,19 @@ function resolveActiveTrackIds(tracksDoc, options = {}) {
   const allTracks = Array.isArray(tracksDoc?.tracks) ? tracksDoc.tracks : [];
   const customActive = parseCsvList(options.activeTracks);
   if (options.activeTracks !== undefined) {
-    const uniqueActive = [...new Set(customActive)];
-    if (uniqueActive.length < 3 || uniqueActive.length > 4) {
-      throw new Error('--active-tracks 必须指定 3 至 4 条不同的演化线');
-    }
-    const knownTracks = new Set(allTracks.flatMap(track => [track.id, track.name]));
-    const unknown = uniqueActive.filter(track => !knownTracks.has(track));
+    const uniqueValues = [...new Set(customActive)];
+    const resolvedTracks = uniqueValues.map(value =>
+      allTracks.find(track => track.id === value || track.name === value)
+    );
+    const unknown = uniqueValues.filter((value, index) => !resolvedTracks[index]);
     if (unknown.length) {
       throw new Error(`--active-tracks 包含未知演化线: ${unknown.join(', ')}`);
     }
-    return new Set(uniqueActive);
+    const uniqueTrackIds = [...new Set(resolvedTracks.map(track => track.id))];
+    if (uniqueTrackIds.length < 3 || uniqueTrackIds.length > 4) {
+      throw new Error('--active-tracks 必须指定 3 至 4 条不同的演化线');
+    }
+    return new Set(uniqueTrackIds);
   }
 
   const regionTracks = tracksDoc?.regionTracks || {};
