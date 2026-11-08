@@ -2451,6 +2451,7 @@ ${colors.yellow}指令:${colors.reset}
   show <campaign> [options]       显示战役当前状态 (支持 --hud, --json, --veil)
   update <campaign> [options]     实时更新生命、法术位、职业资源、专注、金币、物品与状态
   rest <campaign> <--short|--long> [--dice <N>] [--con <mod>] 执行短休或长休恢复
+  time <campaign> --advance <hours>   推进非 D 模式游戏时间（长休间隔按游戏时间计算）
   promote <campaign> --class <职业> [--con <mod>] [--armor <甲>|--ac <AC>] [--cha <mod>] 0→1级转职
   next <campaign>                 推进战斗先攻指针，自动递增轮次并递减带轮次状态 (如 中毒:2)
   mob-add <campaign> [options]    遭遇战加入敌方怪物 (--name <名> --hp <血> --ac <甲> --count <数> --init <先攻>)
