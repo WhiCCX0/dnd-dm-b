@@ -248,6 +248,23 @@ test('state - 长休只降低一层力竭，不会自动解除昏迷', () => {
   assert.equal(rested.character.conditions.includes('力竭 2'), false);
 });
 
+test('state - 损坏的休息时间戳拒绝静默重置，累计游戏时钟溢出不写入', () => {
+  initSession(TEST_CAMPAIGN, { name: '时钟校验者', hp: 12 });
+  const filePath = getSessionPath(TEST_CAMPAIGN);
+  const corrupted = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  corrupted.clock.elapsedHours = 5;
+  corrupted.restState.lastLongRestCompletedAtHour = 6;
+  fs.writeFileSync(filePath, JSON.stringify(corrupted, null, 2), 'utf8');
+  assert.throws(() => getState(TEST_CAMPAIGN), /lastLongRestCompletedAtHour/);
+
+  initSession(TEST_CAMPAIGN, { name: '时钟溢出者', hp: 12, force: true });
+  const maxed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  maxed.clock.elapsedHours = Number.MAX_SAFE_INTEGER;
+  fs.writeFileSync(filePath, JSON.stringify(maxed, null, 2), 'utf8');
+  assert.throws(() => advanceSessionTime(TEST_CAMPAIGN, 1), /安全整数范围/);
+  assert.equal(getState(TEST_CAMPAIGN).clock.elapsedHours, Number.MAX_SAFE_INTEGER);
+});
+
 test('state - 长休按资源恢复规则结算：短休资源全恢复、长休定量资源递增、非休息资源不变', () => {
   initSession(TEST_CAMPAIGN, {
     name: '资源测试者',
