@@ -14,6 +14,7 @@ export const CADENCE_HOURS = Object.freeze({
   year: 8640
 });
 export const MAX_ADVANCE_HOURS = 8640; // 首版单次推进上限：1 年（360 天）
+export const MAX_WORLD_EVENT_HISTORY = 500;
 
 export const TIER_LEVELS = Object.freeze(['凡俗', '文明', '超凡', '异界', '诸界']);
 export const LEDGER_TYPES = Object.freeze(['机会', '线索', '承诺', '债', '仇怨', '秘密', '余波']);
@@ -475,6 +476,9 @@ export function validateWorldDoc(worldDoc) {
   }
   if (worldDoc.eventHistory !== undefined && !Array.isArray(worldDoc.eventHistory)) {
     throw new Error('world.json.eventHistory 必须为数组');
+  }
+  if ((worldDoc.eventHistory || []).length > MAX_WORLD_EVENT_HISTORY) {
+    throw new Error(`world.json.eventHistory 最多保留 ${MAX_WORLD_EVENT_HISTORY} 条记录`);
   }
   for (const key of ['locations', 'factions', 'npcs', 'clocks', 'ledger', 'canon', 'rumors']) {
     validateUniqueRecordIds(worldDoc[key], key);
