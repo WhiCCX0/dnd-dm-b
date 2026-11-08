@@ -74,9 +74,12 @@ export function createRng(explicitRng) {
 }
 
 function rollDie(sides, rng = Math.random) {
-  const u = rng();
-  const clamped = u >= 1 ? 0.999999999 : (u < 0 ? 0 : u);
-  return Math.floor(clamped * sides) + 1;
+  const value = rng();
+  if (!Number.isFinite(value)) {
+    throw new Error('随机源必须返回有限数值');
+  }
+  const normalized = Math.min(1 - Number.EPSILON, Math.max(0, value));
+  return Math.floor(normalized * sides) + 1;
 }
 
 function validateDc(rawDc, label = 'DC') {
@@ -404,12 +407,13 @@ function executeSingleRoll(expr, options = {}) {
 
     // Handle advantage / disadvantage on 1d20
     if (sides === 20 && hasAdvOrDis) {
+      const canceled = options.advantage && options.disadvantage;
       const r1 = rollDie(20, rng);
-      const r2 = rollDie(20, rng);
+      const r2 = canceled ? null : rollDie(20, rng);
       let chosen;
       let modeTag;
-      if (options.advantage && options.disadvantage) {
-        chosen = r1; // cancel out
+      if (canceled) {
+        chosen = r1;
         modeTag = 'Adv+Dis Canceled';
       } else if (options.advantage) {
         chosen = Math.max(r1, r2);
@@ -427,7 +431,7 @@ function executeSingleRoll(expr, options = {}) {
       return evaluateRollOutcome({
         expr: `${expr} (${modeTag})`,
         mode: modeTag,
-        rolls: [r1, r2],
+        rolls: canceled ? [r1] : [r1, r2],
         chosen,
         mod,
         total,
@@ -479,10 +483,11 @@ function executeSingleRoll(expr, options = {}) {
       }
 
       if (term.sides === 20 && numDice === 1 && hasAdvOrDis) {
+        const canceled = options.advantage && options.disadvantage;
         const r1 = rollDie(20, rng);
-        const r2 = rollDie(20, rng);
+        const r2 = canceled ? null : rollDie(20, rng);
         let chosen;
-        if (options.advantage && options.disadvantage) chosen = r1;
+        if (canceled) chosen = r1;
         else if (options.advantage) chosen = Math.max(r1, r2);
         else chosen = Math.min(r1, r2);
         allRolls.push(chosen);
@@ -492,7 +497,7 @@ function executeSingleRoll(expr, options = {}) {
         termResults.push({
           type: 'dice',
           expr: `${term.count}d${term.sides}`,
-          rolls: [r1, r2],
+          rolls: canceled ? [r1] : [r1, r2],
           chosen,
           sign: term.sign,
           total: chosen * term.sign
@@ -553,6 +558,33 @@ export function formatHiddenRoll(result) {
   return `${result.total}`;
 }
 
+export function formatHiddenJson(batchResult) {
+  const sourceResults = Array.isArray(batchResult.results) && batchResult.results.length
+    ? batchResult.results
+    : [batchResult];
+  const results = sourceResults.map((result) => {
+    const safe = { total: result.total };
+    if (result.attack) {
+      safe.verdict = result.autoHit ? 'CRIT' : (result.autoMiss ? 'AUTO-MISS' : (result.hit === true ? 'HIT' : (result.hit === false ? 'MISS' : null)));
+    } else if (typeof result.success === 'boolean') {
+      safe.verdict = result.success ? 'PASS' : 'FAIL';
+    }
+    if (result.d20Special === 'NATURAL 20!') safe.natural = 20;
+    else if (result.d20Special === 'NATURAL 1!') safe.natural = 1;
+    if (safe.verdict === null) delete safe.verdict;
+    return safe;
+  });
+
+  return {
+    batch: batchResult.batch ?? results.length,
+    total: results[0]?.total ?? batchResult.total,
+    ...(results[0]?.verdict ? { verdict: results[0].verdict } : {}),
+    ...(results[0]?.natural ? { natural: results[0].natural } : {}),
+    results,
+    totals: results.map(result => result.total)
+  };
+}
+
 function main() {
   const args = process.argv.slice(2);
   let parsed;
@@ -571,7 +603,8 @@ function main() {
   try {
     const batchResult = roll(parsed.expr, parsed);
     if (parsed.json) {
-      console.log(JSON.stringify(batchResult, null, 2));
+      const output = parsed.hidden ? formatHiddenJson(batchResult) : batchResult;
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
 
