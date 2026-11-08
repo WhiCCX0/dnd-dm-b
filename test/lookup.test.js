@@ -14,7 +14,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 
 test('lookup - 导入模块不会永久覆盖宿主进程的 process.emitWarning', () => {
   const moduleUrl = new URL('../scripts/lookup.js', import.meta.url).href;
-  const source = `const original = process.emitWarning; await import(${JSON.stringify(moduleUrl)}); if (process.emitWarning !== original) process.exit(1);`;
+  const source = `const original = process.emitWarning; const mod = await import(${JSON.stringify(moduleUrl)}); mod.lookup('spell', '火球术', { json: true }); if (process.emitWarning !== original) process.exit(1);`;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     encoding: 'utf8'
   });
