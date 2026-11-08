@@ -1646,7 +1646,7 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
     appendLog(
       state,
       '长休完成',
-      `生命值完全恢复，恢复全部法术位与职业资源，重获全部生命骰 (${details.join('; ')})`
+      `生命值完全恢复，恢复全部法术位与符合恢复规则的职业资源，重获全部生命骰 (${details.join('; ')})`
     );
   } else {
     // Short rest: Optional Hit Dice spending + reset short-rest resources
