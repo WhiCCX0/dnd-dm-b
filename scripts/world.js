@@ -778,7 +778,7 @@ export function runWorldTime(campaignName, options = {}) {
 
   if (!options.advance) {
     const view = filterPlayerVisible(world, { gm: Boolean(options.gm) });
-    return {
+    return projectPlayerResult({
       advanced: false,
       calendar: view.calendar,
       timestamp: formatTimestamp(view.calendar),
@@ -787,7 +787,7 @@ export function runWorldTime(campaignName, options = {}) {
       events: [],
       linkageEvents: [],
       overdueLedger: []
-    };
+    }, { gm: Boolean(options.gm) });
   }
 
   const res = advanceWorldTimeWithTracks(world, options.advance);
@@ -798,7 +798,7 @@ export function runWorldTime(campaignName, options = {}) {
   const visibleEvents = gm ? res.events : res.events.filter(e => e.visibility !== 'secret');
   const visibleOverdue = gm ? res.overdueLedger : res.overdueLedger.filter(l => l.visibility !== 'secret');
 
-  return {
+  return projectPlayerResult({
     advanced: true,
     deltaHours: res.deltaHours,
     calendar: visibleWorld.calendar,
@@ -808,7 +808,7 @@ export function runWorldTime(campaignName, options = {}) {
     events: visibleEvents,
     linkageEvents: gm ? res.linkageEvents : res.linkageEvents.filter(e => e.visibility !== 'secret'),
     overdueLedger: visibleOverdue
-  };
+  }, { gm });
 }
 
 // ============================================================================
@@ -1053,7 +1053,11 @@ export function manageNpc(campaignName, options = {}) {
     world.rng = nextRng;
     const tpl = group.entries[index];
 
-    const id = options.id || `npc:gen_${world.npcs.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.npcs, 'npc:gen_');
+    if (!id) throw new Error('NPC ID 不得为空');
+    if (world.npcs.some(existing => existing.id === id)) {
+      throw new Error(`NPC ID "${id}" 已存在`);
+    }
     const npc = {
       id,
       name: options.name || tpl.name,
@@ -1076,7 +1080,8 @@ export function manageNpc(campaignName, options = {}) {
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `npc:${world.npcs.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.npcs, 'npc:');
+    if (!id) throw new Error('NPC ID 不得为空');
     if (world.npcs.some(n => n.id === id)) {
       throw new Error(`NPC ID "${id}" 已存在`);
     }
@@ -1167,7 +1172,11 @@ export function manageRumor(campaignName, options = {}) {
   }
 
   if (options.add) {
-    const id = options.id ? String(options.id).trim() : `rum:${world.rumors.length + 1}`;
+    const id = options.id ? String(options.id).trim() : nextSequentialId(world.rumors, 'rum:');
+    if (!id) throw new Error('传闻 ID 不得为空');
+    if (world.rumors.some(existing => existing.id === id)) {
+      throw new Error(`传闻 ID "${id}" 已存在`);
+    }
     const tier = options.tier || '凡俗';
     if (!TIER_LEVELS.includes(tier)) {
       throw new Error(`无效传闻认知层级 "${tier}" (支持: ${TIER_LEVELS.join(', ')})`);
@@ -1217,9 +1226,12 @@ export function manageRumor(campaignName, options = {}) {
     const globalPool = tierPool.filter(entry => !entry.region);
     const eligiblePool = regionalPool.length > 0
       ? regionalPool
-      : (globalPool.length > 0 ? globalPool : tierPool);
+      : (globalPool.length > 0 ? globalPool : (currentRegion ? [] : tierPool));
 
     if (eligiblePool.length === 0) {
+      if (currentRegion) {
+        throw new Error(`地区「${currentRegion}」在认知层级 [${maxTier}] 下没有匹配传闻或全球传闻；拒绝抽取其他地区传闻`);
+      }
       throw new Error(`当前认知层级上限 [${maxTier}] 下无可用传闻条目`);
     }
 
@@ -1293,6 +1305,10 @@ export function runOracle(campaignName, options = {}) {
     throw new Error(`未找到战役 "${campaignName}" 的 world.json。`);
   }
 
+  const odds = String(options.odds || 'even').toLowerCase();
+  if (!['unlikely', 'even', 'likely'].includes(odds)) {
+    throw new Error(`无效神谕概率 odds "${options.odds}"（支持 unlikely / even / likely）`);
+  }
   const tableKey = options.table || 'omen';
   const group = resolveTableGroup(tablesDoc, tableKey);
 
@@ -1301,7 +1317,6 @@ export function runOracle(campaignName, options = {}) {
   if (options.question || !options.table) {
     const d6Res = rollD6WithRng(world.rng);
     world.rng = d6Res.nextRng;
-    const odds = String(options.odds || 'even').toLowerCase();
     let adjusted = d6Res.roll;
     if (odds === 'likely') adjusted = Math.min(6, d6Res.roll + 1);
     else if (odds === 'unlikely') adjusted = Math.max(1, d6Res.roll - 1);
