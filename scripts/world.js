@@ -165,6 +165,14 @@ export function resolveTableGroup(tablesDoc, rawKey = 'omen') {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error(`随机表 "${resolvedKey}" 为空或缺少 entries 数组`);
   }
+  for (const [index, entry] of entries.entries()) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`随机表 "${resolvedKey}" 的 entries[${index}] 必须为对象`);
+    }
+    if (entry.visibility !== undefined && !VISIBILITY_LEVELS.includes(entry.visibility)) {
+      throw new Error(`随机表 "${resolvedKey}" 的 entries[${index}].visibility 非法: ${String(entry.visibility)}`);
+    }
+  }
   return {
     tableKey: resolvedKey,
     name: group.name || resolvedKey,
