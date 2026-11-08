@@ -848,6 +848,24 @@ test('phase2 (state.js rest 联动与模式隔离) - mode: "D" 短休/长休原�
   assert.deepEqual(worldAfter.calendar, worldBefore.calendar, '非 D 模式绝不能因目录存在 world.json 而推进世界时间');
 });
 
+test('state CLI - D 模式休息后明确显示世界时间与演化事件', () => {
+  const campaign = 'd-mode-rest-time-output';
+  cleanCampaign(campaign);
+  initSession(campaign, { mode: 'D', name: '科林', hp: 12 });
+  initWorld(campaign, { seed: 20261108, region: '铁锚自由同盟与万门海湾', location: '万门海湾外港' });
+
+  const result = spawnSync(process.execPath, [
+    STATE_SCRIPT, 'rest', campaign, '--short'
+  ], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DND_SESSIONS_DIR: TEMP_SESSIONS_DIR },
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /世界时间:/);
+  assert.match(result.stdout, /\+1h/);
+});
+
 test('phase2 (回滚失败人工恢复指引与 CLI 无 ANSI 门禁) - .bak 损坏时给出人能看懂的手动处理步骤，跨目录 CLI 零 ANSI', () => {
   const crashCamp = 'p2-rollback-error-guide';
   cleanCampaign(crashCamp);
