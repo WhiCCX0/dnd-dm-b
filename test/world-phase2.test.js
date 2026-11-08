@@ -25,6 +25,7 @@ import {
   manageRumor,
   runOracle,
   projectPlayerResult,
+  resolveTableGroup,
   applyTrackLinkagesForStep
 } from '../scripts/world.js';
 
@@ -662,6 +663,15 @@ test('world - 地区传闻支持层级别名，但没有匹配或全球条目时
     location: '灰岩外城圣赎街',
     tablesFile: customTables
   }), /拒绝抽取其他地区传闻/);
+});
+
+test('world - 自定义随机表拒绝非对象条目与非法可见级别', () => {
+  assert.throws(() => resolveTableGroup({
+    tables: { malformed: { entries: [null] } }
+  }, 'malformed'), /entries\[0\] 必须为对象/);
+  assert.throws(() => resolveTableGroup({
+    tables: { malformed: { entries: [{ text: '测试', visibility: 'gm-only' }] } }
+  }, 'malformed'), /visibility 非法/);
 });
 
 test('world - NPC/传闻重复 ID 与非法神谕 odds 均被拒绝', () => {
