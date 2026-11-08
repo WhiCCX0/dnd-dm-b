@@ -513,6 +513,47 @@ function parseSlots(str) {
   return res;
 }
 
+function parseResourceRecoveryRule(rawRule) {
+  const raw = String(rawRule || 'long:all').trim().toLowerCase();
+  if (['never', 'none', 'special'].includes(raw)) {
+    return { cadence: 'none', amount: 0 };
+  }
+
+  const match = raw.match(/^(short|long)(?::(all|\d+))?$/);
+  if (!match) {
+    if (/^(short|long)(?::|$)/.test(raw)) {
+      throw new Error(\`无效职业资源恢复规则 "\${rawRule}"；支持 short[:all|N]、long[:all|N]、never\`);
+    }
+    return { cadence: 'none', amount: 0 };
+  }
+
+  const amount = match[2] || 'all';
+  if (amount !== 'all' && !Number.isSafeInteger(Number(amount))) {
+    throw new Error(\`职业资源恢复数值超出安全整数范围: "\${rawRule}"\`);
+  }
+  return { cadence: match[1], amount: amount === 'all' ? 'all' : Number(amount) };
+}
+
+function getResourceCurrentAfterRest(resource, restType) {
+  if (!resource || typeof resource !== 'object') return undefined;
+  const current = resource.current;
+  const max = resource.max;
+  if (!Number.isSafeInteger(current) || !Number.isSafeInteger(max) || current < 0 || max < current) {
+    throw new Error('职业资源状态非法：current/max 必须为非负整数且 current 不得超过 max');
+  }
+
+  const { cadence, amount } = parseResourceRecoveryRule(resource.recovery);
+  if (restType === 'short') {
+    if (cadence !== 'short') return current;
+    return amount === 'all' ? max : Math.min(max, current + amount);
+  }
+  if (restType === 'long') {
+    if (cadence === 'short' || (cadence === 'long' && amount === 'all')) return max;
+    if (cadence === 'long') return Math.min(max, current + amount);
+  }
+  return current;
+}
+
 function parseResourceSpec(specStr) {
   // Format: "名称:当前/上限[:恢复规则]" or "名称:上限[:恢复规则]"
   // e.g. "回气:2/2:short:1" or "引导神力:2/2:short:1" or "圣疗池:5:long:all"
@@ -526,6 +567,7 @@ function parseResourceSpec(specStr) {
   const secondColon = rest.indexOf(':');
   const countPart = secondColon === -1 ? rest : rest.slice(0, secondColon).trim();
   const recovery = secondColon === -1 ? 'long:all' : rest.slice(secondColon + 1).trim();
+  parseResourceRecoveryRule(recovery);
 
   let current;
   let max;
@@ -1537,23 +1579,6 @@ export function updateState(campaignName, updates = {}) {
   return saveState(campaignName, state);
 }
 
-function recoverResourceAfterLongRest(resource) {
-  if (!resource || typeof resource !== 'object') return resource?.current;
-  const current = resource.current;
-  const max = resource.max;
-  if (!Number.isSafeInteger(current) || !Number.isSafeInteger(max) || current < 0 || max < current) {
-    throw new Error('职业资源状态非法：current/max 必须为非负整数且 current 不得超过 max');
-  }
-
-  const recovery = String(resource.recovery || 'long:all').trim().toLowerCase();
-  const [cadence, amount = 'all'] = recovery.split(':');
-  if (cadence === 'short') return max;
-  if (cadence !== 'long') return current;
-  if (amount === 'all') return max;
-  if (!/^\d+$/.test(amount)) return current;
-  return Math.min(max, current + Number(amount));
-}
-
 function mutateStateForRest(state, restType = 'short', options = {}) {
   clearEphemeralDeltas(state);
   if (!['short', 'long'].includes(restType)) {
@@ -1607,12 +1632,14 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         delete char.spellSlots[lvl].lastDelta;
       }
 
+      const resourceDetails = [];
       for (const [resourceName, resource] of Object.entries(char.resources || {})) {
         const before = resource?.current;
-        const next = recoverResourceAfterLongRest(resource);
+        const next = getResourceCurrentAfterRest(resource, 'long');
         if (next !== undefined && next > before) {
           resource.current = next;
           resource.lastDelta = `+${next - before} 长休恢复`;
+          resourceDetails.push(`${resourceName} ${before}->${next}/${resource.max}`);
         } else if (resource && typeof resource === 'object') {
           delete resource.lastDelta;
         }
@@ -1634,7 +1661,7 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         nextConditions.push(c);
       }
       conds.splice(0, conds.length, ...nextConditions);
-      details.push(`${char.name}: HP ${char.hp.max}/${char.hp.max}, 生命骰 +${diceRecover} (${char.hitDice.current}/${char.hitDice.total})`);
+      details.push(`${char.name}: HP ${char.hp.max}/${char.hp.max}, 生命骰 +${diceRecover} (${char.hitDice.current}/${char.hitDice.total})${resourceDetails.length ? `，资源恢复: ${resourceDetails.join(', ')}` : ''}`);
     }
 
     state.status.round = 0;
@@ -1715,18 +1742,12 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
         }
       }
       for (const [resName, res] of Object.entries(m.resources || {})) {
-        const rec = String(res.recovery || '').toLowerCase();
-        if (rec === 'short' || rec === 'short:all') {
-          if (res.current < res.max) {
-            res.current = res.max;
-            recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
-          }
-        } else if (rec.startsWith('short:')) {
-          const amt = parseInt(rec.split(':')[1], 10);
-          if (!Number.isNaN(amt) && amt > 0 && res.current < res.max) {
-            res.current = Math.min(res.max, res.current + amt);
-            recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
-          }
+        const before = res?.current;
+        const next = getResourceCurrentAfterRest(res, 'short');
+        if (next !== undefined && next > before) {
+          res.current = next;
+          res.lastDelta = `+${next - before} 短休恢复`;
+          recoveredResources.push(`${m.name}-${resName}(${res.current}/${res.max})`);
         }
       }
     }
