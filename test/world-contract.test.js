@@ -225,6 +225,18 @@ test('phase0 (数据结构与单一权威) - D 模式元数据、铜币无损换
     ...validWorld,
     meta: { ...validWorld.meta, completedOpIds: ['same-op', 'same-op'] }
   }), /completedOpIds 必须是最多/);
+  assert.throws(() => validateWorldDoc({
+    ...validWorld,
+    factions: [{ id: 'fac:bad', name: '缺少可见级别', attitude: 0 }]
+  }), /faction\(fac:bad\) visibility 非法/);
+  assert.throws(() => validateWorldDoc({
+    ...validWorld,
+    rumors: [{ id: 'rum:bad-tier', text: '层级错误', tier: '未知', visibility: 'rumor' }]
+  }), /rumor "rum:bad-tier" 的 tier 非法/);
+  assert.throws(() => validateWorldDoc({
+    ...validWorld,
+    eventHistory: [{ id: 'evt:missing-visibility', type: 'clock_tick', recordedAt: 'Y0142-M01-D01T08' }]
+  }), /event\(evt:missing-visibility\) visibility 非法/);
   assert.throws(() => validateWorldDoc({ ...validWorld, party: [] }), /越界字段.*party/);
 
   // 玩家视图默认剔除全部 secret 记录与 NPC secret 字段；GM 视图完整保留
