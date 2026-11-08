@@ -23,7 +23,8 @@ import {
   manageNpc,
   manageRumor,
   runOracle,
-  projectPlayerResult
+  projectPlayerResult,
+  applyTrackLinkagesForStep
 } from '../scripts/world.js';
 
 import {
@@ -500,6 +501,114 @@ test('phase2 (world.js npc, rumor 与 oracle) - 抽表生成、死亡保护与�
     ['铅灰冻雨夹杂细碎火山灰', '逆风吹来带着硫磺味的暖雾'].includes(customDraw.entry.text),
     '新增表不改代码即可通过 oracle --table 直接抽取'
   );
+});
+
+test('world - 跨线联动继承来源与目标中更严格的可见级别', () => {
+  const world = {
+    calendar: { era: '剑火纪', year: 142, month: 1, day: 1, hour: 8 },
+    clocks: [
+      { id: 'clk:secret_source', visibility: 'secret' },
+      {
+        id: 'clk:public_target',
+        name: '公开战争时钟',
+        kind: 'track',
+        cadence: 'month',
+        current: 0,
+        max: 4,
+        status: 'active',
+        nextTick: 'Y0142-M02-D01T08',
+        visibility: 'public'
+      }
+    ]
+  };
+  const events = applyTrackLinkagesForStep(
+    world,
+    'clk:secret_source',
+    0,
+    1,
+    'Y0142-M01-D01T08',
+    {
+      linkages: [{
+        id: 'lnk:secret_to_public',
+        fromClockId: 'clk:secret_source',
+        atStage: 1,
+        targetClockId: 'clk:public_target',
+        delta: 1,
+        summary: 'secret source caused a public target change'
+      }]
+    }
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].visibility, 'secret');
+});
+
+test('world - 地区传闻支持层级别名，但没有匹配或全球条目时拒绝跨地区抽取', () => {
+  const campaign = 'world-rumor-region-isolation';
+  cleanCampaign(campaign);
+  initWorld(campaign, {
+    seed: 20261108,
+    region: '灰岩十一邦',
+    location: '灰岩外城圣赎街'
+  });
+  const aliasDraw = manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    maxTier: '凡俗'
+  });
+  assert.equal(aliasDraw.rumor.id, 'rumor:greyrock_cavalry');
+
+  const customTables = path.join(TEMP_SESSIONS_DIR, 'region-isolation-tables.json');
+  fs.writeFileSync(customTables, JSON.stringify({
+    tables: {
+      rumor: {
+        name: '无匹配地区测试',
+        entries: [{
+          id: 'rum:wrong-region',
+          text: '万门海湾的黑帆舰队',
+          tier: '凡俗',
+          region: '铁锚自由同盟与万门海湾'
+        }]
+      }
+    }
+  }), 'utf8');
+  assert.throws(() => manageRumor(campaign, {
+    draw: true,
+    location: '灰岩外城圣赎街',
+    tablesFile: customTables
+  }), /拒绝抽取其他地区传闻/);
+});
+
+test('world - NPC/传闻重复 ID 与非法神谕 odds 均被拒绝', () => {
+  const campaign = 'world-invalid-inputs';
+  cleanCampaign(campaign);
+  initWorld(campaign, { seed: 20261108 });
+  manageNpc(campaign, { add: true, id: 'npc:duplicate', name: '重复人物' });
+  assert.throws(() => manageNpc(campaign, {
+    add: true, id: 'npc:duplicate', name: '第二个重复人物'
+  }), /NPC ID .*已存在/);
+
+  manageRumor(campaign, {
+    add: true, id: 'rum:duplicate', text: '第一条重复传闻', visibility: 'public'
+  });
+  assert.throws(() => manageRumor(campaign, {
+    add: true, id: 'rum:duplicate', text: '第二条重复传闻'
+  }), /传闻 ID .*已存在/);
+
+  assert.throws(() => runOracle(campaign, {
+    question: '门后有人吗？',
+    odds: 'certain'
+  }), /无效神谕概率/);
+});
+
+test('world - 自定义 activeTracks 必须是 3 至 4 条已知且不重复的演化线', () => {
+  const campaign = 'world-active-track-validation';
+  cleanCampaign(campaign);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,track:trade,track:unknown'
+  }), /未知演化线/);
+  assert.throws(() => initWorld(campaign, {
+    activeTracks: 'track:war,track:trade,track:war'
+  }), /3 至 4 条不同的演化线/);
 });
 
 test('world - GM 密档投影会过滤嵌套秘密记录、NPC secret 与隐藏事件', () => {
