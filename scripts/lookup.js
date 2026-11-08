@@ -19,11 +19,7 @@ import { fileURLToPath } from 'url';
 const _require = createRequire(import.meta.url);
 let _DatabaseSync = null;
 
-function getDatabaseSync() {
-  if (_DatabaseSync) return _DatabaseSync;
-
-  // node:sqlite is experimental on supported Node releases. Suppress only its
-  // import-time warning without mutating process.emitWarning for the host app.
+function withSqliteWarningSuppressed(action) {
   const originalEmitWarning = process.emitWarning;
   try {
     process.emitWarning = function (warning, ...args) {
@@ -32,11 +28,22 @@ function getDatabaseSync() {
       if (type === 'ExperimentalWarning' && /SQLite/i.test(message)) return;
       return originalEmitWarning.call(this, warning, ...args);
     };
-    _DatabaseSync = _require('node:sqlite').DatabaseSync;
+    return action();
   } finally {
     process.emitWarning = originalEmitWarning;
   }
+}
+
+function getDatabaseSync() {
+  if (!_DatabaseSync) {
+    _DatabaseSync = withSqliteWarningSuppressed(() => _require('node:sqlite').DatabaseSync);
+  }
   return _DatabaseSync;
+}
+
+function openDatabaseSync(...args) {
+  const DatabaseSync = getDatabaseSync();
+  return withSqliteWarningSuppressed(() => new DatabaseSync(...args));
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -139,8 +146,7 @@ function getDb() {
   }
   if (fs.existsSync(currentDbPath)) {
     try {
-      const DatabaseSync = getDatabaseSync();
-      sqliteDb = new DatabaseSync(currentDbPath, { readOnly: true });
+      sqliteDb = openDatabaseSync(currentDbPath, { readOnly: true });
       sqliteDbPath = currentDbPath;
       stmtCache.clear();
       return sqliteDb;
