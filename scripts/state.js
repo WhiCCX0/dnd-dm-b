@@ -1539,14 +1539,26 @@ export function updateState(campaignName, updates = {}) {
 
 function mutateStateForRest(state, restType = 'short', options = {}) {
   clearEphemeralDeltas(state);
-  const targetMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
+  if (!['short', 'long'].includes(restType)) {
+    throw new Error(`未知休息类型: ${restType}（支持 short / long）`);
+  }
+  if (state.status?.inCombat || state.status?.encounter?.active) {
+    throw new Error('当前仍处于遭遇战中，不能开始休息；请先结束遭遇战并清理战斗状态');
+  }
 
-  // Reject rest if explicitly targeted member (or primary solo member) is dead
-  for (const m of targetMembers) {
-    const conds = getMemberConditions(state, m);
-    if (conds.includes('死亡') && (options.who || state.party.length === 1)) {
-      throw new Error(`角色【${m.name}】已死亡，无法通过休整恢复生命（需先复活 --revive）`);
-    }
+  const requestedMembers = options.who ? [resolvePartyMember(state, options.who)] : state.party;
+  const unavailable = requestedMembers.filter(m =>
+    getMemberConditions(state, m).includes('死亡') || (m.hp?.current ?? 0) < 1
+  );
+  if (options.who && unavailable.length) {
+    const member = unavailable[0];
+    throw new Error(`角色【${member.name}】当前 HP 为 0 或已死亡，不能开始休息`);
+  }
+  const targetMembers = requestedMembers.filter(m =>
+    !getMemberConditions(state, m).includes('死亡') && (m.hp?.current ?? 0) >= 1
+  );
+  if (targetMembers.length === 0) {
+    throw new Error('队伍中没有 HP 至少为 1 且未死亡的角色可以休息');
   }
 
   if (restType === 'long') {
@@ -1622,32 +1634,43 @@ function mutateStateForRest(state, restType = 'short', options = {}) {
       if (spend > primaryTarget.hitDice.current) {
         throw new Error(`可用生命骰不足 (当前剩余: ${primaryTarget.hitDice.current}/${primaryTarget.hitDice.total})`);
       }
-      const conMod = options.con !== undefined ? parseIntStrict(options.con, 'con', { min: -5, max: 10 }) : 0;
+      const conMod = options.con !== undefined
+        ? parseIntStrict(options.con, 'con', { min: -5, max: 10 })
+        : (primaryTarget.abilities?.con !== undefined ? abilityMod(primaryTarget.abilities.con) : null);
+      if (conMod === null) {
+        throw new Error(`角色【${primaryTarget.name}】缺少体质属性；短休消耗生命骰时请提供 --con <体质调整值> 或补全 abilities.con`);
+      }
       const sides = parseInt(String(primaryTarget.hitDice.die || 'd10').replace(/^d/i, ''), 10) || 10;
 
       let totalRolled = 0;
+      let actualSpend = 0;
       const rolls = [];
       if (options.heal !== undefined) {
         totalRolled = parseIntStrict(options.heal, 'heal', { min: 0, max: 9999 });
+        actualSpend = spend;
       } else {
         const rng = createRng(options.rng);
-        for (let i = 0; i < spend; i++) {
-          const u = rng();
-          const clamped = u >= 1 ? 0.999999999 : (u < 0 ? 0 : u);
-          const r = Math.floor(clamped * sides) + 1;
+        for (let i = 0; i < spend && primaryTarget.hp.current + totalRolled < primaryTarget.hp.max; i++) {
+          const value = rng();
+          if (!Number.isFinite(value)) throw new Error('短休随机源必须返回有限数值');
+          const normalized = Math.min(1 - Number.EPSILON, Math.max(0, value));
+          const r = Math.floor(normalized * sides) + 1;
           const gained = Math.max(1, r + conMod);
           rolls.push(r);
           totalRolled += gained;
+          actualSpend += 1;
         }
       }
 
-      primaryTarget.hitDice.current -= spend;
+      primaryTarget.hitDice.current -= actualSpend;
       const prevHp = primaryTarget.hp.current;
       primaryTarget.hp.current = Math.min(primaryTarget.hp.max, primaryTarget.hp.current + totalRolled);
       const actualHealed = primaryTarget.hp.current - prevHp;
       primaryTarget.hp.lastDelta = `+${actualHealed} 短休生命骰`;
       syncHpConditionsForMember(state, primaryTarget, []);
-      hdDetail = `，【${primaryTarget.name}】消耗 ${spend} 枚生命骰(${primaryTarget.hitDice.die}${rolls.length ? ': [' + rolls.join(',') + ']' : ''})恢复 ${actualHealed} 点生命 (HP ${primaryTarget.hp.current}/${primaryTarget.hp.max})`;
+      hdDetail = actualSpend > 0
+        ? `，【${primaryTarget.name}】消耗 ${actualSpend} 枚生命骰(${primaryTarget.hitDice.die}${rolls.length ? ': [' + rolls.join(',') + ']' : ''})恢复 ${actualHealed} 点生命 (HP ${primaryTarget.hp.current}/${primaryTarget.hp.max})`
+        : `，【${primaryTarget.name}】当前生命已满，未消耗生命骰`;
     }
 
     // Recover short-rest resources across target members
@@ -1712,12 +1735,31 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
       action: `rest:${restType}`,
       mutate: (curState, curWorld) => {
         ensurePartyStructure(curState);
+        if (restType === 'long') {
+          const lastCompletedAt = curState.restState?.lastLongRestCompletedAt;
+          if (lastCompletedAt) {
+            const elapsed = toTotalHours(curWorld.calendar) - toTotalHours(lastCompletedAt);
+            if (elapsed < 16) {
+              throw new Error(`距离上次长休完成仅经过 ${elapsed} 小时；2024 规则要求至少等待 16 小时`);
+            }
+          }
+        }
         const nextState = mutateStateForRest(curState, restType, options);
         const timeRes = advanceWorldTimeWithTracks(curWorld, duration);
+        if (restType === 'long') {
+          nextState.restState = {
+            ...(nextState.restState || {}),
+            lastLongRestCompletedAt: formatTimestamp(timeRes.world.calendar)
+          };
+        }
         return {
           nextState,
           nextWorld: timeRes.world,
-          result: timeRes
+          result: {
+            ...timeRes,
+            restStartedAt: formatTimestamp(curWorld.calendar),
+            restCompletedAt: formatTimestamp(timeRes.world.calendar)
+          }
         };
       },
       _simulateCrashAfterStateWrite: Boolean(options._simulateCrashAfterStateWrite),
@@ -1725,11 +1767,49 @@ export function applyRest(campaignName, restType = 'short', options = {}) {
     });
 
     ensurePartyStructure(txRes.state);
+    if (!txRes.skipped && txRes.result) {
+      txRes.state.worldAdvance = {
+        deltaHours: txRes.result.deltaHours,
+        restStartedAt: txRes.result.restStartedAt,
+        restCompletedAt: txRes.result.restCompletedAt,
+        calendar: txRes.world.calendar,
+        events: (txRes.result.events || []).filter(event => event.visibility !== 'secret'),
+        linkageEvents: (txRes.result.linkageEvents || []).filter(event => event.visibility !== 'secret'),
+        overdueLedger: (txRes.result.overdueLedger || []).filter(item => item.visibility !== 'secret')
+      };
+    }
     return txRes.state;
   }
 
-  // 非 D 模式（A/B/C 经典模式）：完全保持原有单文件行为不变
+  // 经典模式使用独立的累计游戏时钟；现实时间不会影响规则裁决。
+  const elapsedHours = state.clock?.elapsedHours ?? 0;
+  const lastLongRestAt = state.restState?.lastLongRestCompletedAtHour;
+  if (restType === 'long' && lastLongRestAt !== null && lastLongRestAt !== undefined) {
+    const elapsedSinceRest = elapsedHours - lastLongRestAt;
+    if (elapsedSinceRest < 16) {
+      throw new Error(`距离上次长休完成仅经过 ${elapsedSinceRest} 小时；2024 规则要求至少等待 16 小时`);
+    }
+  }
   mutateStateForRest(state, restType, options);
+  state.clock.elapsedHours += restType === 'long' ? 8 : 1;
+  if (restType === 'long') {
+    state.restState.lastLongRestCompletedAtHour = state.clock.elapsedHours;
+  }
+  return saveState(campaignName, state);
+}
+
+export function advanceSessionTime(campaignName, rawHours) {
+  const state = getState(campaignName);
+  if (!state) throw new Error(`未找到战役 "${campaignName}"`);
+  if (state.meta?.mode === 'D') {
+    throw new Error('D 模式请使用 world.js time --advance 推进世界时间');
+  }
+  if (state.status?.inCombat || state.status?.encounter?.active) {
+    throw new Error('战斗期间不能推进非战斗游戏时间');
+  }
+  const hours = parseIntStrict(rawHours, 'advance', { min: 1, max: 8640 });
+  state.clock.elapsedHours += hours;
+  appendLog(state, '时间推进', `游戏时间推进 ${hours} 小时（累计 ${state.clock.elapsedHours} 小时）`);
   return saveState(campaignName, state);
 }
 
@@ -2435,6 +2515,7 @@ export function parseCliArgs(args) {
     else if (arg === '--break-concentration') options.breakConcentration = true;
     else if (arg === '--list') options.list = true;
     else if (arg === '--mode') options.mode = requireVal(i++, '--mode');
+    else if (arg === '--advance') options.advance = requireVal(i++, '--advance');
     else if (arg === '--copper') options.copper = requireVal(i++, '--copper');
     else if (arg === '--op-id') options.opId = requireVal(i++, '--op-id');
     else if (arg === '--preset') options.preset = requireVal(i++, '--preset');
@@ -2556,6 +2637,12 @@ function main() {
     if (!campaign) {
       console.error(`${colors.red}错误: 请指定战役名称 (例如: goblin-cave)${colors.reset}`);
       process.exit(1);
+    }
+
+    if (command === 'time') {
+      const state = advanceSessionTime(campaign, options.advance);
+      console.log(`✓ 游戏时间推进 ${options.advance} 小时（累计 ${state.clock.elapsedHours} 小时）`);
+      return;
     }
 
     if (command === 'init') {
