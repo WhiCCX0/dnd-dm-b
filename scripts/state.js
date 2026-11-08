@@ -521,10 +521,7 @@ function parseResourceRecoveryRule(rawRule) {
 
   const match = raw.match(/^(short|long)(?::(all|\d+))?$/);
   if (!match) {
-    if (/^(short|long)(?::|$)/.test(raw)) {
-      throw new Error(`无效职业资源恢复规则 "${rawRule}"；支持 short[:all|N]、long[:all|N]、never`);
-    }
-    return { cadence: 'none', amount: 0 };
+    throw new Error(`无效职业资源恢复规则 "${rawRule}"；支持 short[:all|N]、long[:all|N]、never`);
   }
 
   const amount = match[2] || 'all';
