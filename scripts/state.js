@@ -25,6 +25,8 @@ import {
   JIANHUO_WORLD_ID,
   coinsToCopper,
   formatCopper,
+  formatTimestamp,
+  toTotalHours,
   executeDualFileTx,
   recoverPendingOp
 } from './world-contract.js';
@@ -596,6 +598,15 @@ function ensurePartyStructure(state) {
     }
   }
 
+  if (!state.clock || typeof state.clock !== 'object') {
+    state.clock = { elapsedHours: 0 };
+  } else if (!Number.isSafeInteger(state.clock.elapsedHours) || state.clock.elapsedHours < 0) {
+    state.clock.elapsedHours = 0;
+  }
+  if (!state.restState || typeof state.restState !== 'object') {
+    state.restState = { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null };
+  }
+
   if (!state.notes) {
     state.notes = { npc: [], location: [], clue: [], quest: [], fact: [] };
   } else {
@@ -816,8 +827,30 @@ function buildCharacterFromPresetOrOptions(presetKey, options = {}, isPrimary = 
     ? (options.inspiration === true || options.inspiration === 'true' || options.inspiration === 1 || options.inspiration === '1')
     : (isLevel0 ? true : Boolean(preset?.heroicInspiration));
 
+  const persistedPresetData = {};
+  if (preset) {
+    const fields = [
+      'background', 'subclassPlan', 'proficiencyBonus', 'saveProficiencies',
+      'skills', 'attacks', 'initiativeBonus', 'isSidekick', 'hpBonus',
+      'hpBonusSource', 'weaponProficiencies', 'armorProficiencies',
+      'toolProficiencies', 'feats', 'speciesTraits', 'classFeatures',
+      'spellsKnown', 'spellsPrepared', 'spellcastingAbility', 'languages',
+      'senses'
+    ];
+    for (const field of fields) {
+      if (preset[field] !== undefined) persistedPresetData[field] = structuredClone(preset[field]);
+    }
+    if (preset.saveProficiencies !== undefined) {
+      persistedPresetData.savingThrowProficiencies = structuredClone(preset.saveProficiencies);
+    }
+    if (Array.isArray(preset.inventory)) {
+      persistedPresetData.startingEquipment = structuredClone(preset.inventory);
+    }
+  }
+
   return {
     character: {
+      ...persistedPresetData,
       id: charId,
       name: charName,
       class: charClass,
@@ -940,6 +973,8 @@ export function defaultState(campaignName, options = {}) {
         mobs: []
       }
     },
+    clock: { elapsedHours: 0 },
+    restState: { lastLongRestCompletedAtHour: null, lastLongRestCompletedAt: null },
     notes: {
       npc: [],
       location: [],
@@ -1135,7 +1170,7 @@ export function updateState(campaignName, updates = {}) {
 
         // Check Massive Damage Instant Death (when dropping from >0 HP and remaining overflow >= maxHp)
         const overflowDamage = prevHp > 0 ? Math.max(0, unabsorbed - prevHp) : unabsorbed;
-        if (hp.current === 0 && overflowDamage >= hp.max) {
+        if (prevHp > 0 && hp.current === 0 && overflowDamage >= hp.max) {
           member.deathSaves.failures = 3;
           if (!conditions.includes('死亡')) {
             conditions.push('死亡');
@@ -1143,8 +1178,8 @@ export function updateState(campaignName, updates = {}) {
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) conditions.splice(sIdx, 1);
           logs.push(`${whoPrefix}承受巨额溢伤 (${overflowDamage} >= HP上限 ${hp.max})，角色当场【死亡】！`);
-        } else if (prevHp === 0 && unabsorbed > 0) {
-          // 0 HP taking damage removes Stable and triggers Death Save failure(s)
+        } else if (prevHp === 0 && damage > 0 && !conditions.includes('死亡')) {
+          // Any damage while at 0 HP causes a death save failure, even if temporary HP absorbs it.(s)
           const sIdx = conditions.indexOf('稳定');
           if (sIdx !== -1) {
             conditions.splice(sIdx, 1);
@@ -2498,7 +2533,7 @@ function main() {
       } else if (campaign) {
         const st = getState(campaign);
         if (st && Array.isArray(st.party)) {
-          partyLevels = st.party.map(p => p.level || 1);
+          partyLevels = st.party.map(p => p.level ?? 1);
         }
       }
       const monsterCrs = options.crs
